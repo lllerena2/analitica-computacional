@@ -1,0 +1,158 @@
+---
+title: "Analítica Computacional"
+subtitle: "Ejercicio #1"
+author:
+  - name: Jorge I. Vélez, PhD
+    orcid: 0000-0002-3146-7899
+    url: https://jorgeivanvelez.netlify.app/
+    email: jvelezv@uninorte.edu.co
+    affiliation: 
+      - name: Universidad del Norte, Barranquilla
+date: "3/20/2024"
+lang: es
+self-contained: true
+fontsize: 14pt
+code-fold: show
+code-tools: true
+number-sections: false
+format: html
+toc: true
+toc-title: ""
+toc-depth: 3
+---
+
+```{r setup, include=FALSE, message=FALSE}
+## mostrar siempre el código
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Introducción
+
+En este estudio de caso analizaremos datos provenientes de una tarea repetitiva en niños y adultos diagnosticados y no diagnosticados en Trastorno de Déficit de Atención con Hiperactividad ([ADHD](https://www.cdc.gov/ncbddd/Spanish/adhd/facts.html) en inglés), residentes en Barranquilla.
+
+La tarea consiste en 50 intentos cuya respuesta se cuantifica en una escala de `1` a `5`. Por simplicidad, valores diferentes a `5` se consideran **no** exitosos.
+
+A continuación se presentan una serie de preguntas que deben responder. Pueden trabajar en grupos de **máximo 3 personas**.
+
+**Fecha de entrega:** Abril 1, 2024.
+
+
+## Datos
+
+Los datos se encuentran disponibles [aquí](https://www.dropbox.com/scl/fi/w3gyohi6gxlx8a5gqewd1/taskA.txt?rlkey=gtlegctvjc1igec75v137a194&dl=0). 
+
+Las variables de interés son `trait_A1`, `trait_A2`, $...$, `trait_A50`.  Cada número representa en `estado` de finalización de la tarea.  
+
+
+## Preguntas
+
+### P1
+
+Seleccione sólo los menores de edad. Determine cuántos de estos tienen ADHD y cuántos no. Cuántos niños y niñas conforman esta submuestra? *Hint:* Revise la ayuda de la función `?subset` y `?table`.
+
+**Respuesta.**  _Aquí escribe la respuesta_.
+
+```{r}
+## aquí va el código
+```
+
+
+### P2
+
+Grafique el patrón de desempeño para cada `trait_A`.  Observa alguna diferencia entre niños menores de edad con ADHD y aquellos que no?  Hay diferencia entre niños y niñas?  _Hint:_ Determine el porcentaje de personas que, para cada `trait_A` realizan correctamente la tarea. Luego grafique ese porcentaje.
+
+
+**Respuesta.**  _Aquí escribe la respuesta_.
+
+```{r}
+## aquí va el código
+```
+
+
+### P3
+
+Determine el número de aciertos por participante.  Estudie la distribución por género, y diagnóstico de ADHD. Podemos decir que niños con `ina` e `hyp` se comportan de la misma forma?. Concluya _sin_ necesidad de realizar una prueba de hipótesis.
+
+
+**Respuesta.**  _Aquí escribe la respuesta_.
+
+```{r}
+## aquí va el código
+```
+
+
+### P4
+
+Suponga que la respuesta de un individuo puede resumirse en el siguiente _string_:
+
+```{r}
+## string de 0s y 1s
+v <- "01000111111101100100001110100111100110000111001110"
+```
+
+Construya una función que permita calcular la [entropía](https://en.wikipedia.org/wiki/Entropy_(information_theory)#Definition) de Shannon a partir del objeto `v` que contiene 0s y 1s. *Hint:* Consulte las funciones `strsplit()`, `table()` y `prop.table()`. 
+
+
+### P5
+
+Calcule la entropía $H$ para cada individuo. Estudie la distribución de $H$_1, H_2,\ldots, H_n$ por sexo y dignóstico de ADHD.  Qué observa? 
+
+
+**Respuesta.**  _Aquí escribe la respuesta_.
+
+```{r}
+## aquí va el código
+```
+
+
+### P6
+
+Conside el vector `v` anterior. Construya una función que calcule el número de 0s y 1s, además de la racha más larga de 0s y 1s, el número de _cambios de estado_. *Hint:* Para las rachas, explore la función `rle()`. En el caso de los _cambios de estado_, pensar en una matriz de transición podría ayudar. Tenga en cuenta que dicha matriz es de orden $2\times 2$.
+
+
+**Respuesta.**  _Aquí escribe la respuesta_.
+
+```{r}
+## aquí va el código
+```
+
+### P7
+
+Construya la matriz de transición para el individuo `83`. Calcule $$P(s+1 = j | s = i)$$ donde $s$ es el intento e $i,j=\{$`0`,`1`$\}$. Defina esta matriz de probabilidades como $\mathbf{P}^{(1)}$. Tenga en cuenta que $\mathbf{P}^{(1)}$ es de dimensión $2\times 2$.
+
+**Respuesta.**  _Aquí escribe la respuesta_.
+
+```{r}
+## aquí va el código
+```
+
+### P8
+
+Construya la matriz de transición en el paso $k$ utilizando la propiedad de Markov para matrices de transición, esto es 
+  
+  $$
+  \mathbf{P}^{(k)}_M = \underset{k\text{-veces}}{\underbrace{\mathbf{P}^{(1)}\times \mathbf{P}^{(1)}\times\mathbf{P}^{(1)}\times\cdots\times\mathbf{P}^{(1)}}}
+  $$ 
+
+  En la expresión anterior, $M$ indica que se está utilizando la propiedad de Markov para matrices de transición, y el símbolo $\times$ se refiere a [multiplicación matricial](https://www.mathsisfun.com/algebra/matrix-multiplying.html) y no a potencias.
+  
+**Respuesta.**  _Aquí escribe la respuesta_.
+
+```{r}
+## aquí va el código
+```
+  
+### P9
+
+Calcule $\mathbf{P}^{(k)}$ como $P(s+k = j | s = i)$ para $k=\{1,2,3,4\}$ siguiendo la misma lógica de `P7`. 
+
+### P10
+
+Compare el resultado anterior con $\mathbf{P}^{(k)}_M$ utilizando una prueba $\chi^2$ para tablas de contingencia. *Hint:* Consulte la ayuda de la función `?chisq.test` y [este](https://www.juntadeandalucia.es/averroes/centros-tic/14002996/helvia/aula/archivos/repositorio/250/295/html/estadistica/bondad.htm) enlace.
+
+**Respuesta.**  _Aquí escribe la respuesta_.
+
+```{r}
+## aquí va el código
+```
