@@ -54,9 +54,21 @@ Seleccione sólo los menores de edad. Determine cuántos de estos tienen ADHD y 
 **Respuesta.**  _Aquí escribe la respuesta_.
 
 ```{r}
-## aquí va el código
+## Leemos los datos:
+adhd_data = read.delim("data/taskA.txt")
+
+## Menores de edad
+adhd_data_menores = subset(adhd_data, edad < 18)
+
+## Adhd status
+table(subset(adhd_data_menores, select=adhdstatus))
+
 ```
 
+```{r}
+## niños y niñas en el subset
+table(subset(adhd_data_menores, select=sexo))
+```
 
 ### P2
 
@@ -67,6 +79,37 @@ Grafique el patrón de desempeño para cada `trait_A`.  Observa alguna diferenci
 
 ```{r}
 ## aquí va el código
+create_plot <- function(df){
+  len <- nrow(df)
+  trait_percentaje <- colSums(subset(df, select = c(trait_A1:trait_A50))==5)/len
+  trait_plot <- hist(trait_percentaje, main = "Patrón de desempeño por trait")
+  # abline(h = mean(trait_percentaje), col = "red", lty = 2)
+  return(trait_plot)
+}
+
+# Plot para todos los datos:
+create_plot(adhd_data)
+```
+
+```{r}
+# plot para menores de edad con ADHD
+create_plot(subset(adhd_data, edad < 18 & adhdstatus==1))
+```
+
+```{r}
+# plot para menores de edad con ADHD
+create_plot(subset(adhd_data, edad >= 18 & adhdstatus==0))
+```
+
+
+```{r}
+# plot para menores de edad con ADHD para el sexo masculino
+create_plot(subset(adhd_data, edad < 18 & adhdstatus==1 & sexo=="M"))
+```
+
+```{r}
+# plot para menores de edad sin ADHD para el sexo femenino
+create_plot(subset(adhd_data, edad < 18 & adhdstatus==1 & sexo=="F"))
 ```
 
 
@@ -79,6 +122,17 @@ Determine el número de aciertos por participante.  Estudie la distribución por
 
 ```{r}
 ## aquí va el código
+adhd_data$n_aciertos <- rowSums(subset(adhd_data, select = c(trait_A1:trait_A50))==5)
+
+hist(adhd_data$n_aciertos, main = "Número de aciertos")
+```
+```{r}
+
+hist(subset(adhd_data, sexo=="M")$n_aciertos, main = "Número de aciertos")
+
+```
+```{r}
+hist(subset(adhd_data, sexo=="F")$n_aciertos, main = "Número de aciertos")
 ```
 
 
@@ -93,6 +147,16 @@ v <- "01000111111101100100001110100111100110000111001110"
 
 Construya una función que permita calcular la [entropía](https://en.wikipedia.org/wiki/Entropy_(information_theory)#Definition) de Shannon a partir del objeto `v` que contiene 0s y 1s. *Hint:* Consulte las funciones `strsplit()`, `table()` y `prop.table()`. 
 
+```{r}
+find_entropy <- function(vector){
+  frequency_table <- table(strsplit(vector, ""))
+  len <- nchar(vector)
+  entropy <- -sum((frequency_table/len) * log2(frequency_table/len))
+  return(entropy)
+  }
+
+find_entropy(v)
+```
 
 ### P5
 
@@ -103,9 +167,26 @@ Calcule la entropía $H$ para cada individuo. Estudie la distribución de $H$_1,
 
 ```{r}
 ## aquí va el código
+adhd_data$respuestas <- apply((subset(adhd_data, select = c(trait_A1:trait_A50)) == 5)*1, 1, function(x) as.character(paste(x, collapse = "")))
+
+# Se utiliza sapply para aplicar la función y además, regresar un resultados simplificado (un número)
+adhd_data$entropia <- sapply(adhd_data$respuestas, find_entropy)
+
+## 
+hist(subset(adhd_data, sexo=="F")$entropia, main = "Entropía")
+```
+
+```{r}
+hist(subset(adhd_data, sexo=="M")$entropia, main = "Entropía")
+```
+```{r}
+hist(subset(adhd_data, adhdstatus==0)$entropia, main = "Entropía")
 ```
 
 
+```{r}
+hist(subset(adhd_data, adhdstatus==1)$entropia, main = "Entropía")
+```
 ### P6
 
 Conside el vector `v` anterior. Construya una función que calcule el número de 0s y 1s, además de la racha más larga de 0s y 1s, el número de _cambios de estado_. *Hint:* Para las rachas, explore la función `rle()`. En el caso de los _cambios de estado_, pensar en una matriz de transición podría ayudar. Tenga en cuenta que dicha matriz es de orden $2\times 2$.
@@ -115,7 +196,79 @@ Conside el vector `v` anterior. Construya una función que calcule el número de
 
 ```{r}
 ## aquí va el código
+
+describir_vector <- function(str_vector){
+  vector <- as.integer(strsplit(str_vector, "")[[1]])
+  rle_vector <- rle(vector)
+  
+  #Números de ceros y unos
+  n_ceros <- sum(vector==0)
+  n_unos <- sum(vector==1)
+  
+  # Rachas
+  max_ceros <- max(rle_vector$lengths[rle_vector$values == 0])
+  max_unos <- max(rle_vector$lengths[rle_vector$values == 1])
+  
+  #Matriz de transición(cambios de estado)
+  estados <- unique(vector)
+  n_estados <- length(estados)
+  matriz_transicion <- matrix(0, nrow = n_estados, ncol = n_estados, dimnames = list(estados, estados))
+
+  for (i in 1:(length(vector) - 1)) {
+    estado_actual <- vector[i]
+    estado_siguiente <- vector[i + 1]
+    print(matriz_transicion[estado_actual, estado_siguiente])
+    matriz_transicion[estado_actual, estado_siguiente] <- matriz_transicion[estado_actual, estado_siguiente] + 1
+    print(matriz_transicion)
+  }
+  
+  #cambios_estados <- sum(matriz_transicion) - sum(diag(matriz_transicion))
+  
+  #output
+  resultados <- list("num_ceros" = n_ceros, "num_unos" = n_unos, "max_racha_ceros" = max_ceros,"max_racha_ceros" =max_unos )
+  return(matriz_transicion)
+}
+
+resultados = describir_vector(v)
+
+#resultados$num_ceros
 ```
+
+
+```{r}
+# Supongamos que tienes un vector de observaciones de estados
+observaciones <- c("A", "B", "A", "A", "B", "C", "C", "A", "B", "A")
+
+# Función para calcular la matriz de transición a partir de las observaciones
+calcular_matriz_transicion <- function(observaciones) {
+  # Obtener los estados únicos y contar las transiciones
+  estados <- unique(observaciones)
+  n_estados <- length(estados)
+  matriz_transicion <- matrix(0, nrow = n_estados, ncol = n_estados, dimnames = list(estados, estados))
+  
+  # Contar las transiciones entre estados
+  for (i in 1:(length(observaciones) - 1)) {
+    estado_actual <- observaciones[i]
+    estado_siguiente <- observaciones[i + 1]
+    matriz_transicion[estado_actual, estado_siguiente] <- matriz_transicion[estado_actual, estado_siguiente] + 1
+  }
+  
+  # Normalizar las frecuencias para obtener probabilidades de transición
+  # matriz_transicion <- matriz_transicion / rowSums(matriz_transicion)
+  
+  return(matriz_transicion)
+}
+
+# Calcular la matriz de transición
+matriz_transicion <- calcular_matriz_transicion(observaciones)
+
+# Imprimir la matriz de transición
+print("Matriz de Transición:")
+print(matriz_transicion)
+
+```
+
+
 
 ### P7
 
@@ -146,6 +299,7 @@ Construya la matriz de transición en el paso $k$ utilizando la propiedad de Mar
 ### P9
 
 Calcule $\mathbf{P}^{(k)}$ como $P(s+k = j | s = i)$ para $k=\{1,2,3,4\}$ siguiendo la misma lógica de `P7`. 
+
 
 ### P10
 
