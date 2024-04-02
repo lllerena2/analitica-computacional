@@ -195,7 +195,22 @@ Conside el vector `v` anterior. Construya una función que calcule el número de
 **Respuesta.**  _Aquí escribe la respuesta_.
 
 ```{r}
-## aquí va el código
+## Se segmenta las funciones, una para matriz de transición y otra para obtener todos los parámetros requeridos
+
+get_matriz_transicion <- function(str_vector){
+  vector <- as.integer(strsplit(str_vector, "")[[1]])
+  estados <- unique(vector)
+  n_estados <- length(estados)
+  matriz_transicion <- matrix(0, nrow = n_estados, ncol = n_estados, dimnames = list(estados, estados))
+
+  for (i in 1:(length(vector) - 1)) {
+    estado_actual <- vector[i]
+    estado_siguiente <- vector[i + 1]
+    matriz_transicion[estado_actual+1, estado_siguiente+1] <- matriz_transicion[estado_actual+1, estado_siguiente+1] + 1
+  }
+  return(matriz_transicion)
+}
+
 
 describir_vector <- function(str_vector){
   vector <- as.integer(strsplit(str_vector, "")[[1]])
@@ -210,65 +225,17 @@ describir_vector <- function(str_vector){
   max_unos <- max(rle_vector$lengths[rle_vector$values == 1])
   
   #Matriz de transición(cambios de estado)
-  estados <- unique(vector)
-  n_estados <- length(estados)
-  matriz_transicion <- matrix(0, nrow = n_estados, ncol = n_estados, dimnames = list(estados, estados))
 
-  for (i in 1:(length(vector) - 1)) {
-    estado_actual <- vector[i]
-    estado_siguiente <- vector[i + 1]
-    print(matriz_transicion[estado_actual, estado_siguiente])
-    matriz_transicion[estado_actual, estado_siguiente] <- matriz_transicion[estado_actual, estado_siguiente] + 1
-    print(matriz_transicion)
-  }
-  
-  #cambios_estados <- sum(matriz_transicion) - sum(diag(matriz_transicion))
+  matriz_transicion = get_matriz_transicion(str_vector)
+  cambios_estados <- sum(matriz_transicion) - sum(diag(matriz_transicion))
   
   #output
-  resultados <- list("num_ceros" = n_ceros, "num_unos" = n_unos, "max_racha_ceros" = max_ceros,"max_racha_ceros" =max_unos )
-  return(matriz_transicion)
+  resultados <- list("num_ceros" = n_ceros, "num_unos" = n_unos, "max_racha_ceros" = max_ceros,"max_racha_ceros" =max_unos, "cambios_estados" = cambios_estados)
+  return(resultados)
 }
 
-resultados = describir_vector(v)
-
-#resultados$num_ceros
+describir_vector(v)
 ```
-
-
-```{r}
-# Supongamos que tienes un vector de observaciones de estados
-observaciones <- c("A", "B", "A", "A", "B", "C", "C", "A", "B", "A")
-
-# Función para calcular la matriz de transición a partir de las observaciones
-calcular_matriz_transicion <- function(observaciones) {
-  # Obtener los estados únicos y contar las transiciones
-  estados <- unique(observaciones)
-  n_estados <- length(estados)
-  matriz_transicion <- matrix(0, nrow = n_estados, ncol = n_estados, dimnames = list(estados, estados))
-  
-  # Contar las transiciones entre estados
-  for (i in 1:(length(observaciones) - 1)) {
-    estado_actual <- observaciones[i]
-    estado_siguiente <- observaciones[i + 1]
-    matriz_transicion[estado_actual, estado_siguiente] <- matriz_transicion[estado_actual, estado_siguiente] + 1
-  }
-  
-  # Normalizar las frecuencias para obtener probabilidades de transición
-  # matriz_transicion <- matriz_transicion / rowSums(matriz_transicion)
-  
-  return(matriz_transicion)
-}
-
-# Calcular la matriz de transición
-matriz_transicion <- calcular_matriz_transicion(observaciones)
-
-# Imprimir la matriz de transición
-print("Matriz de Transición:")
-print(matriz_transicion)
-
-```
-
-
 
 ### P7
 
@@ -276,9 +243,25 @@ Construya la matriz de transición para el individuo `83`. Calcule $$P(s+1 = j |
 
 **Respuesta.**  _Aquí escribe la respuesta_.
 
+La matriz de probabilidades para esto, representan la probabilidad condicional de cambios de estados en un sólo paso, por tanto, puede ser determinada así:
+
 ```{r}
-## aquí va el código
+## Calculamos la matriz de transición:
+
+matriz_transicion_83 = get_matriz_transicion(adhd_data[83,"respuestas"])
+
+P_matriz_83 = matriz_transicion_83 / rowSums(matriz_transicion_83)
+
+P_matriz_83
 ```
+
+Ahrora, bien nos piden $P(s+1 = j | s = i)$ cuando $s$ es $i,j=\{$`0`,`1`$\}$, esto es:
+
+```{r}
+P_matriz_83[1,2]
+```
+
+
 
 ### P8
 
@@ -293,12 +276,34 @@ Construya la matriz de transición en el paso $k$ utilizando la propiedad de Mar
 **Respuesta.**  _Aquí escribe la respuesta_.
 
 ```{r}
-## aquí va el código
+transicion_matriz_paso_k <- function(str_vector, k) {
+  matriz_transicion <- get_matriz_transicion(str_vector)
+  matriz_transicion_paso_1 <- matriz_transicion / rowSums(matriz_transicion)
+  matriz_paso_k <- matriz_transicion_paso_1
+  if (k <= 1){
+    return(matriz_paso_k)
+  } else {
+      for (i in 2:k) {
+      matriz_paso_k <- matriz_paso_k %*% matriz_transicion_paso_1
+  }
+    return(matriz_paso_k)
+  }
+}
+
+# la matriz 
+transicion_matriz_paso_k(adhd_data[83,"respuestas"], 100)
 ```
-  
 ### P9
 
 Calcule $\mathbf{P}^{(k)}$ como $P(s+k = j | s = i)$ para $k=\{1,2,3,4\}$ siguiendo la misma lógica de `P7`. 
+
+
+```{r}
+for (k in 1:4){
+  P <- transicion_matriz_paso_k(adhd_data[83,"respuestas"], k)[1,2]
+  print(paste("La probabilidad cuando i = 0, j = 1 y k=",k,"es:", P))
+}
+```
 
 
 ### P10
