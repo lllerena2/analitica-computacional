@@ -97,7 +97,7 @@ create_plot(subset(adhd_data, edad < 18 & adhdstatus==1))
 ```
 
 ```{r}
-# plot para menores de edad con ADHD
+# plot para mayores de edad con ADHD
 create_plot(subset(adhd_data, edad >= 18 & adhdstatus==0))
 ```
 
@@ -313,5 +313,16 @@ Compare el resultado anterior con $\mathbf{P}^{(k)}_M$ utilizando una prueba $\c
 **Respuesta.**  _Aquí escribe la respuesta_.
 
 ```{r}
-## aquí va el código
+# Matriz teórica (estable)
+matriz_M <- transicion_matriz_paso_k(adhd_data[83,"respuestas"], 6)[1,]
+vector_teortico <- as.vector(matriz_M)
+
+for (k in 1:6) {
+  matriz_k <- transicion_matriz_paso_k(adhd_data[83,"respuestas"], k)[1,]
+  vector_k <- as.vector(matriz_k)
+  
+  chi_square_test <- chisq.test(vector_k, p = vector_teortico)
+  print(chi_square_test)
+}
+
 ```
