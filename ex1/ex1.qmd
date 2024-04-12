@@ -8,6 +8,8 @@ author:
     email: jvelezv@uninorte.edu.co
     affiliation: 
       - name: Universidad del Norte, Barranquilla
+  - name: Luis Llerena Sierra
+  - name: Andrés Correa Pacheco
 date: "3/20/2024"
 lang: es
 self-contained: true
@@ -70,6 +72,8 @@ table(subset(adhd_data_menores, select=adhdstatus))
 table(subset(adhd_data_menores, select=sexo))
 ```
 
+*En la muestra se encuentran un total de 142 menores de 18 años, de los cuales 72 tienen el síndrome de ADHD y 70 no lo tienen. Esta submuestra está compuesta por 46 individuos de sexo femenino y 96 de sexo masculino.*
+
 ### P2
 
 Grafique el patrón de desempeño para cada `trait_A`.  Observa alguna diferencia entre niños menores de edad con ADHD y aquellos que no?  Hay diferencia entre niños y niñas?  _Hint:_ Determine el porcentaje de personas que, para cada `trait_A` realizan correctamente la tarea. Luego grafique ese porcentaje.
@@ -98,7 +102,7 @@ create_plot(subset(adhd_data, edad < 18 & adhdstatus==1))
 
 ```{r}
 # plot para mayores de edad con ADHD
-create_plot(subset(adhd_data, edad >= 18 & adhdstatus==0))
+create_plot(subset(adhd_data, edad < 18 & adhdstatus==0))
 ```
 
 
@@ -112,6 +116,9 @@ create_plot(subset(adhd_data, edad < 18 & adhdstatus==1 & sexo=="M"))
 create_plot(subset(adhd_data, edad < 18 & adhdstatus==1 & sexo=="F"))
 ```
 
+*En la subpoblación de menores de edad que están diagnosticados con síndrome ADHD, no se observa ningún patrón en la distribución. Sin embargo, de las 50 tareas realizadas por estos individuos, la gran mayoría (19 de estas), tuvieron un éxito positivo de entre el 45 y 50%. Acerca de los individuos que no tienen ADHD, se observa una distribución sesgada hacia la derecha.*
+
+*Al dividir la subpoblación en menores de edad del sexo masculino y femenino que tienen el síndrome ADHD se encontró que: el porcentajes de tareas finalizadas exitosamente por el sexo masculino sigue una distribución de campana, mientras que la del sexo femenino es sesgada hacia la izquierda.*
 
 ### P3
 
@@ -128,13 +135,25 @@ hist(adhd_data$n_aciertos, main = "Número de aciertos")
 ```
 ```{r}
 
-hist(subset(adhd_data, sexo=="M")$n_aciertos, main = "Número de aciertos")
+hist(subset(adhd_data, sexo=="M" & adhdstatus==1)$n_aciertos, main = "Número de aciertos")
 
 ```
 ```{r}
-hist(subset(adhd_data, sexo=="F")$n_aciertos, main = "Número de aciertos")
+hist(subset(adhd_data, sexo=="F" & adhdstatus==1)$n_aciertos, main = "Número de aciertos")
 ```
 
+
+```{r}
+hist(subset(adhd_data, sexo=="M" & hyp==1)$n_aciertos, main = "Número de aciertos")
+```
+
+```{r}
+hist(subset(adhd_data, sexo=="M" & ina==1)$n_aciertos, main = "Número de aciertos")
+```
+
+*La distribución de número de aciertos para los individuos diagnosticados con ADHD no es diferente dependiendo del generó, visualmente sus distribuciones son parecidas.*
+
+*Para los niños, sexo masculino sin importar la edad, diagnosticados con ADHD se encontró que estos no o presentan hyp o ina, pero nunca las 2 condiciones.*
 
 ### P4
 
@@ -187,6 +206,11 @@ hist(subset(adhd_data, adhdstatus==0)$entropia, main = "Entropía")
 ```{r}
 hist(subset(adhd_data, adhdstatus==1)$entropia, main = "Entropía")
 ```
+
+*Para los individuos que no fueron diagnosticados con ADHD, se observa una alta frecuencia en el valor igual a 1 de entropía, es decir, el diagnostico final en gran medida no puede ser determinado utilizando como base los resultados exitosos de las tareas asignadas. Mientras que para los individuos con ADHD, si bien hay una alta frecuencia en el valor de 1, también hay una cantidad importante de observaciones en 0.96 y 0.98 valores de entropía; lo que indicaría que sería posible establecer patrones y/o posibles diagnósticos para estos individuos basándose en los resultados satisfactorios de las tareas asignadas.*
+
+
+*Según el sexo, los individuos del sexo masculino, se observa una alta frecuencia en el valor igual a 1 de entropía, es decir, el diagnostico final en gran medida no puede ser determinado utilizando como base los resultados exitosos de las tareas asignadas. Mientras que, para los individuos del sexo femenino, si bien hay una alta frecuencia en el valor de 1, también hay una cantidad importante de observaciones en 0.97 y 0.98 valores de entropía; lo que indicaría que sería posible establecer patrones y/o posibles diagnósticos para estos individuos basándose en los resultados satisfactorios de las tareas asignadas.*
 ### P6
 
 Conside el vector `v` anterior. Construya una función que calcule el número de 0s y 1s, además de la racha más larga de 0s y 1s, el número de _cambios de estado_. *Hint:* Para las rachas, explore la función `rle()`. En el caso de los _cambios de estado_, pensar en una matriz de transición podría ayudar. Tenga en cuenta que dicha matriz es de orden $2\times 2$.
