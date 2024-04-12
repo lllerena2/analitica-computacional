@@ -1,0 +1,380 @@
+---
+title: "Analítica Computacional"
+subtitle: "Sesión #3: Ajuste y Validación de un Modelo de RLM"
+author: 
+  - name: Jorge I. Vélez, PhD
+    email: jvelezv@uninorte.edu.co
+    url: https://jorgeivanvelez.netlify.app/
+    orcid: 0000-0002-3146-7899
+    affiliations:
+      - name: Universidad del Norte, Barranquilla
+date: "4/5/2024"
+lang: es
+self-contained: true
+toc: true
+toc-depth: 3
+toc-location: right
+toc-title: ""
+code-fold: show
+code-tools: true
+fontsize: 13pt
+number-sections: false
+format: html
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(eval = TRUE)
+options(warn = -1)
+
+## disponibilidad de paquetes
+if(!require(car)) install.packages("car", dependencies = TRUE)
+require(car)
+
+if(!require(IsingSampler)) install.packages("IsingSampler", dependencies = TRUE)
+require("IsingSampler")
+
+if(!require(qgraph)) install.packages("qgraph", dependencies = TRUE)
+require("qgraph")
+
+if(!require(mctest)) install.packages("mctest", dependencies = TRUE)
+require("mctest")
+
+if(!require(GGally)) install.packages("GGally")
+require("GGally")
+
+if(!require('plotly')) install.packages('plotly')
+require(plotly)
+```
+
+## Introducción
+
+En esta práctica ajustaremos y validaremos un modelo de RLM, y finalmente realizaremos predicción.
+
+## Contexto Analítico
+
+Pollos Riko Riko (PRR) es la empresa líder en productos avícolas de la Región Caribe. Su centro de operaciones, ubicado en Sabanagrande, Atlántico, produce **4 tipos de producto**: (*i*) pollo entero, (*ii*) bandejas de pechuga entera, (*iii*) bandejas de pernil y (*iv*) bandejas de alas. El precio promedio de venta de cada producto, por libra, es \$8000, \$4300, \$3400 y \$2900, respectivamente. Se sabe que la participación de cada producto en las ventas *totales* de la compañía es $0<p_j<1$ conocido, $j=1,2,3,4$. Por supuesto, $p_1+p_2+p_3+p_4 = 1$.
+
+Los animales se sacrifican luego de 40 días de ser alimentados con una dieta balanceada que incluye nutrientes especiales (variable $x_1$ en gramos/día), agua (variable $x_2$ en ml/día) y forraje (variable $x_3$ en gramos/día), además de la raza (variable $x_4$ con niveles `A`, `B` y `C`) y el hecho de que sean expuestos a una luz especial durante la noche (variable $x_5$ con niveles `0`: No y `1`: Si). Actualmente, el *peso promedio* de un pollo que crece en las instalaciones de la compañía está en el intervalo (2400, 2800) gramos, con una confianza del 95%.
+
+Con miras a **aumentar la eficiencia de la planta**,[^1] PRR ha decidido aumentar el peso de los animales antes de su sacrificio. Para ello, decide realizar un experimento en el que a 100 grupos de 100 animales (i.e., lote) se les proporciona la dieta balanceada y se cuantifica, al final del tiempo de engorde, el peso promedio alcanzado (variable respuesta $Y$).
+
+[^1]: Esto se refiere a que, al final del período de engorde, el animal pese más de lo que pesa en las condiciones actuales.
+
+### Lectura de Datos
+
+Para leer los datos hacemos:
+
+```{r, echo=FALSE}
+## lectura de datos
+url <- 'https://www.dropbox.com/scl/fi/09j9ew9qp8wu5qq54aff2/pollosrikoriko.txt?rlkey=2c2up64l3vctaihbn54154tfk&dl=1'
+d <- read.table(url, header = TRUE)
+d$x5 <- as.factor(d$x5)
+```
+
+Las primeras 6 filas de la base de datos `d` son
+
+```{r}
+## primeras 6 líneas
+head(d)
+```
+
+### Análisis exploratorio
+
+Analicemos inicialmente la correlación entre las variables disponibles:
+
+```{r, fig.align='center', fig.width=6, fig.height=5}
+## matriz de correlación
+par(mfrow = c(1,1), mar = c(.1, .1, .1, .1))
+qgraph(cor(d[, -c(5, 6)]), graph = "cor", layout = "spring", 
+       sampleSize = nrow(d), 
+       legend.cex = 1, alpha = 0.05)
+```
+
+Numéricamente, la matriz de correlación es
+
+```{r message=FALSE, fig.align='center', fig.width=6, fig.height=6}
+## matriz de correlación
+cor(d[, -c(5, 6)])
+```
+
+Estos resultados indican que la correlación entre $y$ y $x_1$ es 0.183, entre $y$ y $x_2$ es 0.413, y entre $y$ y $x_3$ es -0.447. En cuanto a la correlaciones entre las variables *independientes*, podemos concluir que estas son pequeñas, lo cual sugiere que, efectivamente, $x_1, x_2$ y $x_3$ son independientes.
+
+También podemos representar las correlaciones y la distribución de cada variable en un gráfico de dispersión/correlación:
+
+```{r fig.align='center', message=FALSE, fig.width=9, fig.height=7}
+## gráfico de dispersión/correlación
+ggpairs(d) + theme_minimal()
+```
+
+Más información, [aquí](https://ggobi.github.io/ggally/reference/ggpairs.html).
+
+El gráfico 3D entre $x_1$, $x_2$ y $y$ sería:
+
+```{r, fig.align='center', message=FALSE}
+fig <- plot_ly(d,
+        x = ~x1, 
+        y = ~x2, 
+        z = ~y,
+        text = ~rownames(d),
+        color = '#BF382A')
+fig <- fig %>% add_markers()
+fig <- fig %>% layout(title = '\n y vs. (x1, x2)', 
+                      scene = list(xaxis = list(title = 'x1'),
+                                   yaxis = list(title = 'x2'),
+                                   zaxis = list(title = 'y')))
+fig
+```
+
+### Ajuste del modelo
+
+El modelo ajustado es:
+
+```{r}
+## full MLR model
+fit <- lm(y ~ ., data = d)
+summary(fit)
+```
+
+### Inferencia para $\mathbf{\beta}$
+
+Los intervalos de confianza del 95% para los coeficientes pueden obtenerse a través de la función `confint.default()` haciendo
+
+```{r}
+## 95% CI para los coeficientes
+confint.default(fit)
+```
+
+### Multicolinealidad
+
+En términos generales, el concepto de multicolinealidad es sinómino de *redundancia* en las variables independientes.
+
+Uno de los supuestos fuertes del modelo de RLM es que las variables $X_1, X_2,\ldots,X_n$ son independientes. Cuando esto **no** ocurre, los estimadores de ${\beta} = (\beta_1,\beta_2,\ldots,\beta_k)$ tienen propiedades distintas a las [ya](https://jivelez.github.io/book-adii/rlm.html#an%C3%A1lisis-de-multicolinealidad) conocidas.
+
+Desde el punto de vista formal, la existencia de multicolinealidad puede probarse utilizando el *ill-condition number* (ICN)
+
+```{r}
+## ICN
+kappa(fit)     
+```
+
+Teniendo en cuenta que el ICN es $>30$, aparentemente, existe multicolinealidad entre $x_1, x_2$ y $x_3$.
+
+Ahora, si estamos interesados en determinar cuál de la(s) variable(s) independiente(s) con mayor grado de colinealidad, utilizamos el VIF:
+
+```{r}
+## VIF
+car::vif(fit)
+```
+
+Al analizar el VIF, es claro que ningún valor es $>5$.
+
+Recientemente, se han implementado otras pruebas de multicolinealidad en el paquete `mctest`:
+
+```{r message=FALSE}
+## otras pruebas de multicolinealidad
+mctest(fit)$odiags
+```
+
+De acuerdo con estos resultados, **podría** existir multicolinealidad. En particular, aparece el valor de `1` en la segunda entrada de la columna `detection`.
+
+### Validación de supuestos
+
+La validación de los supuestos puede hacerse via valores $p$ como se muestra a continuación.
+
+**Normalidad**
+
+```{r}
+## prueba de Normalidad
+r <- rstudent(fit)
+shapiro.test(r)$p.value
+```
+
+Como el valor $p$ es $>0.05$, entonces los errores del modelo siguen una distribución Normal.
+
+<br>
+
+**Varianza constante**
+
+```{r message=FALSE}
+## prueba de varianza constante
+car:::ncvTest(fit)$p
+```
+
+Como el valor $p$ es $>0.05$, podemos concluir que los errores tienen varianza constante.
+
+<br>
+
+**Independencia**
+
+```{r}
+## prueba de independencia
+car:::durbinWatsonTest(fit)$p
+```
+
+Este resultado indica que los errores del modelo ajustado son independientes.
+
+<br>
+
+### Identificación de *outliers*
+
+Para identificar *outliers* usamos los residuales estudentizados del modelo:
+
+```{r}
+## outliers?
+res <- which(r > 3 | r < -3)
+ifelse(length(res) == 0, 0, length(res))
+```
+
+Otra forma de detectar outliers es a través de la **prueba de Bonferroni**. Esta prueba está implementada en la función outlierTest del paquete car. En nuestro ejemplo, procedemos de la siguiente manera:
+
+```{r message=FALSE}
+## prueba Bonferroni para outliers
+outlierTest(fit, n.max = sqrt(NROW(d)))
+```
+
+Este resultado indica que hay `0` *outliers* en los datos.
+
+### Datos influenciales
+
+Para identificar este tipo de observaciones, utilizamos la [distancia de Cook](https://jivelez.github.io/book-adii/rlm.html#identificaci%C3%B3n-de-observaciones-influenciales).
+
+En `R` procedemos de la siguiente manera:
+
+```{r fig.align='center', fig.width=5, fig.height=5}
+## gráfico de la distancia de Cook
+plot(fit, which = 4, las = 1)
+```
+
+Este resultado indica que las observaciones `20`, `30` y `31` podrían considerarse *influenciales*.
+
+<br>
+
+**Conclusión:** Los supuestos de Normalidad, independencia y varianza constante de los errores se cumplen. Por lo tanto, el modelo es válido para predecir. Además, parecen no existir *outliers* en los datos.
+
+### Predicción
+
+Si fuese de interés determinar el peso promedio de los pollos con en las condiciones
+
+$$
+\mathbf{x}_0= (28, 65, 70, \text{A}, 1)
+$$
+
+procedemos de la siguiente forma:
+
+1.  Creamos el vector de *nuevas* condiciones:
+
+```{r}
+## x0
+x0 <- data.frame(x1 = 28, x2 = 65, x3 = 70, x4 = 'A', x5 = "1")
+x0
+```
+
+2.  Realizamos la estimación de $\widehat{E[Y|\mathbf{x}_0]} = \bar{y}|\mathbf{x}_0$
+
+```{r}
+## estimación
+predict(fit, newdat = x0) 
+```
+
+Por lo tanto, $\widehat{E[Y|\mathbf{x}_0]} = 2778.7$.
+
+3.  Construimos intervalos de confianza. Para ello basta con agregar el argumento `interval` a `predict()`:
+
+El intervalo de confianza del 95% es
+
+```{r}
+## confidence interval
+predict(fit, newdat = x0, interval = 'confidence') 
+```
+
+4.  Construimos intervalos de confianza predicción del 95%:
+
+```{r}
+## prediction interval
+predict(fit, newdat = x0, interval = 'prediction') 
+```
+
+Así, el peso del próximo pollo engordado en las condicione $\mathbf{x}_0= (28, 65, 70, \text{A}, 1)$ será
+
+$$
+Y | \mathbf{x}_0 \in (2679.7, 3027.3).
+$$
+
+Para más información sobre el cálculo de los intervalos de confianza y predicción a partir de un modelo de RLM ajustado, se recomienda consultar `?predict.lm`.
+
+## Homework
+
+**Fecha de entrega:** Abril 12, 2024.
+
+1.  **(15 puntos)** Si en la actualidad PRR dispone de 200 [galpones](https://elproductor.com/wp-content/uploads/2017/05/Pollo-7.jpg) de 14m de ancho por 140m de largo en el que cada uno pueden albergar 8 pollos por m$^2$, determine el peso total promedio alcanzado al final de la etapa de engorde.
+
+2.  **(20 puntos)** Podemos decir que *no* tiene sentido exponer los animales a la luz especial? Cuál de las variables tiene *mayor importancia* en el modelo? Qué implicaciones tiene este resultado?. Use $\alpha = 0.05$.
+
+3.  **(30 puntos)** Si tuviera que recomendar una raza en particular, cuál sería y por qué? Es posible hablar de uniformidad en el peso, independiente de la raza? Escriba el modelo para la raza `B` y determine el peso promedio esperado cuando $\mathbf{x}_0= (28, 65, 70, \text{B}, 1)$.
+
+4.  **(35 puntos)** Ahora, calcule $E[y | x_1=28, x_2=65, x_3 = 70, x_4 = \text{B}, x_5 = 1]$. Recomendaría el engorde de los pollos en estas condiciones para aumentar la eficiencia? Si la pechuga, los dos perniles y las alas representan el 40%, 30% y 15% del peso del pollo, respectivamente, cuál es el precio de venta promedio de un pollo engordado en estas condiciones? Suponga que $p_1=0.1$, $p_2=0.3$, $p_3=0.45$ y $p_4=0.15$. Calcule el ingreso por ventas de los **4 tipos de producto** al utilizar estas condiciones de engorde. Si los gastos operacionales ascienden a \$10000000 mensuales/galpón, *aproxime* la utilidad. Concluya.
+
+## Solución
+
+1. 
+
+```{r}
+area <- 200 * 14 *140
+pollos <- area *8
+s <- simulate(fit,200,1)
+peso_total <- sum(s) / (200 * 100)
+```
+El peso total promedio de los pollos para 200 galpones es de  `r peso_total` gramos.
+
+
+2. **NO** podemos decir que **NO** tiene sentido, de hecho utilizar la luz es una varaible significativa según el modelo construido, además es la tercera varaible más importante y la utilizar la luz especial supone un aumento de 74.84 g en el peso esperado de los pollos luego de la etapa engorde, en comparación de no utilizar la luz.
+
+La variable con mayor importancia es x3, la cantidad de forraje que le dan a los pollos en gramos/días. Si bien su magnitud es de -2.5, es la variable con menos error estándar, lo que añade relevancia a su resultado.
+
+
+3.
+
+Recomendaría la raza **A,** ya que existe sufiente evidencia estadística para afirmar que esta raza representa un aumento de 86 g del valor esperado en comparación con la raza B. Y aunque no se puede decir lo mismo en compración con la raza C, la media de la raza A en los datos de muestra es 10 g superior, pero de no poder utilizar la raza A, los resultados sugieren que no hay una diferencia estadística con la raza C.
+
+
+Para las condiciones dadas, se espera un peso promedio estimado para un galpón de 2767 gramos:
+
+```{r}
+x1 <- data.frame(x1 = 28, x2 = 65, x3 = 70, x4 = 'B', x5 = "1")
+
+## estimación
+predict(fit, newdat = x1) 
+
+## confidence interval - individuo
+predict(fit, newdat = x1, interval = 'confidence') 
+
+## prediction interval - población
+predict(fit, newdat = x1, interval = 'prediction') 
+```
+4. 
+
+```{r}
+
+x1 <- data.frame(x1 = 28, x2 = 65, x3 = 70, x4 = 'B', x5 = "1")
+peso_esperado <- predict(fit, newdat = x1)[[1]]
+
+total_n_pollos_1glp <- area*8
+
+# Total número de pollos en 40 días
+peso_total_lb_1glp <- total_n_pollos_1glp*peso_esperado/453
+  
+producto1 <- 0.1*8000*peso_total_lb_1glp
+producto2 <- 0.3*4300*peso_total_lb_1glp*0.40
+producto3 <- 0.45*3400*peso_total_lb_1glp*0.30
+producto4 <- 0.15*2900*peso_total_lb_1glp*0.15
+
+#total ingresos mensuales para estos productos
+
+ingresos <- (producto1+producto2+producto3+producto4)*30/40
+```
+
+Con esto, por galpón se espera una utilidad de 122 millones de pesos, sin embargo, esto es sólo un escenario y existen otras configuraciones que podrían generar más utilidad. Por ejemplo, cambiar la raza de los pollos utilizados.
+
+## Referencias
+
+Para más información sobre el modelo de RLM se sugiere consultar el [Capítulo 3](https://jivelez.github.io/book-adii/rlm.html) del texto [*Modelos de Regresión: Una aproximación práctica con R*](https://jivelez.github.io/book-adii/).
