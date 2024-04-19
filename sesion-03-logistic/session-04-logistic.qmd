@@ -1,0 +1,442 @@
+---
+title: "Analítica Computacional"
+subtitle: "Sesión #4: Regresión Logística"
+author: 
+  - name: Jorge I. Vélez, PhD
+    email: jvelezv@uninorte.edu.co
+    orcid: 0000-0002-3146-7899
+    affiliations:
+      - name: Universidad del Norte, Barranquilla
+date: "4/6/2024"
+lang: es
+toc: true
+toc-depth: 3
+toc-location: right
+toc-title: ""
+fontsize: 14pt
+number-sections: false
+format: html
+self-contained: true 
+---
+
+```{r, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(warn = -1)
+
+## disponibilidad de paquetes
+if(!require(lmtest)) install.packages('lmtest')
+require(lmtest)
+
+if(!require(pscl)) install.packages('pscl')
+require(pscl)
+
+if(!require(pROC)) install.packages('pROC')
+require(pROC)
+
+if(!require(ResourceSelection)) install.packages('ResourceSelection')
+require(ResourceSelection)
+
+if(!require(skimr)) install.packages('skimr', dependencies = TRUE)
+require(skimr)
+```
+
+## Introducción
+
+La Regresión Logística (RL) es útil cuando se tiene una variable aleatoria respuesta $Y$ de tipo binario que representa el éxito/fracaso, un producto conforme o no conforme, o si una persona desarrolla o no una enfermedad.
+
+En el modelo de RL hace parte del Modelo Lineal Generalizado (MLG) formulado por John Nelder y Robert Wedderburn en 1972 como una familia de modelos de regresión en los que la naturaleza de la variable respuesta $Y$ puede ser distinta a una distribución Normal. En la práctica, esto se refiere a que la variable respuesta $Y$ no necesariamente debe ser continua o simétrica.
+
+Para más información, puede consultar la Sección [4.2](https://jivelez.github.io/book-adii/glm.html#regresi%C3%B3n-log%C3%ADstica) de [*Modelos de Regresión: Una aproximación práctica con R*](https://jivelez.github.io/book-adii/).
+
+```{r bookcover, echo=FALSE, out.width="50%", fig.cap="Modelos de Regresión: Una aproximación práctica con R.  Tomado de [aquí](https://jivelez.github.io/book-adii/).", fig.align='center', message=FALSE}
+require(knitr)
+knitr::include_graphics("https://www.dropbox.com/s/2vawl43itph17r9/bookcover.png?dl=1")
+```
+
+En el MLG, el interés es predecir una función del *valor esperado* de la respuesta $Y$, es decir, predecimos $g(E[Y])$. Usualmente esta función $g(\cdot)$ se conoce como función de enlace o función `link`. Aunque en el modelo de RL existen diferentes funciones `link`, en la práctica es frecuente utilizar
+
+$$
+g(x) = \text{logit}(x) = \log\left(\frac{x}{1-x}\right)
+$$
+
+Puesto que
+
+$$
+Y = 
+\begin{cases}
+1 \text{ si ocurre el evento de interés} \\
+0 \text{ en otro caso}
+\end{cases}
+$$
+
+un *posible* modelo probabilístico para describir $Y$ es *asumir* que
+
+$$
+Y\sim\text{Bernoulli}(\theta), \quad\quad 0<\theta<1
+$$
+
+donde $\theta = P(Y=1)$. Es fácil mostrar que $E[Y] = \theta$.
+
+Ahora, si se tienen un conjunto de variables independientes $x_1, x_2, \ldots, x_k$ que podrían eventualmente influenciar $g(E[Y])$, entonces la estructura del modelo de RL está dada por:
+
+$$
+g(E[Y]) = g(\theta) = \beta_0 + \beta_1x_1 + \beta_2x_2 + \cdots + \beta_kx_k + \epsilon
+$$ donde $\epsilon$ es el error aleatorio.
+
+Teniendo en cuenta la función de enlace, esta ecuación puede reescribirse como
+
+$$
+\log\left(\frac{\theta}{1-\theta}\right) = \beta_0 + \beta_1x_1 + \beta_2x_2 + \cdots + \beta_kx_k + \epsilon
+$$
+
+A partir de una muestra de tamaño $n$, el modelo de RL ajustado es
+
+$$
+\log\left(\frac{\hat{\theta}}{1-\hat{\theta}}\right) = \hat{\beta}_0 + \hat{\beta}_1x_1 + \hat{\beta}_2x_2 + \cdots +\hat{\beta}_kx_k
+$$
+
+Finalmente,
+
+$$
+\hat\theta | _{x_1, x_2, \ldots, x_k} = \frac{1}{1+e^{-\hat{\beta}_0 - \hat{\beta}_1x_1 - \hat{\beta}_2x_2 - \cdots -\hat{\beta}_kx_k}}
+$$
+
+Por lo tanto, si conocemos las variables $x_1, x_2, \ldots, x_k$, es posible calcular
+
+$$
+P(Y=1 | x_1, x_2, \ldots, x_k) = \hat\theta | _{x_1, x_2, \ldots, x_k} 
+$$
+
+Observe que, por definición, el modelo de RL permite predecir la probabilidad de que ocurra el evento de interés y no el hecho de que este ocurra. En otras palabras, este modelo de de regresión y **no** de [clasificación](https://towardsdatascience.com/the-perfect-recipe-for-classification-using-logistic-regression-f8648e267592#:~:text=Logistic%20Regression%20is%20a%20classification%20technique%20used%20in%20machine%20learning,cancer%20is%20malignant%20or%20not). Sin embargo, los resultados obtenidos pueden utilizarse *posteriormente* para realizar *clasificación*.
+
+En esta práctica de `R` trabajaremos (1) la sintaxis del modelo de Regresión Logística, (2) cómo estimar e interpretar el modelo y (3) cómo construir la curva ROC y determinar *cutoffs* óptimos.
+
+## Ejemplo 1: Programa de Entrenamiento
+
+## Contexto Analítico
+
+Ensambles S.A. (ESA), una reconocida empresa de manufactura de la ciudad, presenta una fracción defectuosa de 25% en toda su producción y, en promedio, 5 unidades defectuosas por cada lote de 20 unidades. ESA produce 3 productos estrella a una velocidad de 3, 6 y 9 unidades por minuto, 3 turnos de 7 horas por día, 6 días a la semana. En un día típico de operaciones, 17% de las unidades corresponden al pruducto `1`, 37% al producto `2` y 50% al producto `3`. Se sabe que el costo de reproceso por unidad de cada producto asciende a $r_j = \sqrt{j+2}$, mientras el costo por desecho es $d_j = \sqrt{j+4}$, $j=1,2,3$.
+
+Con miras a *mejorar* la situación, ESA desarrolla un programa entrenamiento entre 100 de sus trabajadores. Como parte del programa, se controlan la configuración (variable $x_1$, con niveles `A`, `B` y `C`) de la planta, el turno en el que se realiza el programa (variable $x_2$, con niveles `T1`, `T2` y `T3`), y dos variables numéricas $x_3$ y $x_4$ de las que no se tiene mayor información. Al final del programa se registró si la pieza producida pasaba la inspección (variable respuesta $Y$; `1`: Si, `0`: No) y el número de piezas defectuosas que, desafortunadamente, produjo durante el programa. Por facilidad, se decidió que *todos* los trabajadores fabricarían una pieza del producto `2`.
+
+Los estructura de los datos se muestra a continuación:
+
+```{r echo=FALSE}
+## lectura de datos
+url <- 'https://www.dropbox.com/scl/fi/3lsvu0zurp9d9cvt1j2ig/entrenamiento_esa.txt?rlkey=812vph23ja6sso5q4q4jowip7&dl=1'
+d <- read.table(url, heade = TRUE)
+d$piezas <- NULL
+head(d)
+```
+
+Las variables relevantes son
+
+-   `y`: si la persona pasa o no el programa de entrenamiento (`1`: Si, `0`: No).
+-   `x1`: configuración (con niveles `A`, `B` y `C`)
+-   `x2`: turno de trabajo (cn niveles `T1`, `T2` y `T3`)
+-   `x3`: parámetro 1 de la máquina
+-   `x4`: parámetro 2 de la máquina
+
+Así por ejemplo, la persona #5 **no pasa** el programa.
+
+### Análisis Exploratorio
+
+```{r}
+## EDA with skimr
+skim(d)
+```
+
+<br>
+
+En la base de datos, la distribución de `y` es
+
+```{r, fig.align='center', fig.width=5, fig.width=5}
+barplot(with(d, table(y)), horiz = TRUE, 
+        las = 1, space = 0.05, 
+        xlab = 'Frecuencia', 
+        ylab = 'status (1: pass; 0: fail)',
+        col = 'purple', border = 'purple',
+        xlim = c(0, 60))
+```
+
+Veamos qué ocurre con las demás variables:
+
+```{r fig.align='center', fig.width=6, fig.height=4}
+par(mfrow = c(1, 2), mar = c(4, 4, 1, 1))
+boxplot(x3 ~ y, data = d, las = 1,
+        ylab = 'status (1: pass; 0: fail)',
+        col = c(2, 3), horizontal = TRUE)
+boxplot(x4 ~ y, data = d, las = 1,
+        ylab = '',
+        col = c(2, 3), horizontal = TRUE)
+```
+
+### Modelo de Regresión Logística
+
+El modelo ajustado puede obtenerse haciendo:
+
+```{r}
+## full logistic regression model
+fit <- glm(y ~ ., data = d, family = binomial)
+summary(fit)
+```
+
+Veamos si el modelo mejora cuando no incluimos `x2`:
+
+```{r}
+## reduced model
+fit_reduced <- glm(y ~ x1 + x3 + x4, data = d, family = binomial)
+summary(fit_reduced)
+```
+
+Observe que el AIC de `fit_reduced` es 53.174 vs. 55.906 de `fit`. Por lo tanto, no incluir `x2` *mejora* el modelo.
+
+Veamos si esta mejora es *estadísticamente significativa*. Para esto usamos la prueba *Likelihood Ratio Test* ([LRT](https://en.wikipedia.org/wiki/Likelihood-ratio_test#:~:text=In%20statistics%2C%20the%20likelihood%2Dratio,the%20ratio%20of%20their%20likelihoods.)):
+
+```{r message=FALSE}
+## models are the same?
+lrtest(fit, fit_reduced)
+```
+
+En este caso, al comparar los modelos `fit` y `fit_reduced` obtenemos un valor $p$ de 0.5305 en la prueba LRT. Esto implica que, estadísticamente, estos modelos *competitivos* son similares. De acuerdo con la formulación, es *preferible* usar `fit_reduced`.
+
+La ecuación del modelo reajustado es
+
+$$
+\text{logit}(\hat{\theta}) = -25.45 + 1.43x_{1\text{B}} + 2x_{1\text{C}} + 0.29 x_3 + 0.991x_4
+$$
+
+donde $x_{1\text{B}}$ y $x_{1\text{C}}$ son variables indicadoras.
+
+A partir del objeto `fit_reduced` podemos calcular el *odds ratio* (OR) asociado a cada variable predictora haciendo:
+
+```{r}
+# calculo del OR
+exp(coefficients(fit_reduced))[-1]   
+```
+
+Por lo tanto,
+
+$$
+\widehat{\text{OR}} = e^{\hat{\beta_1}} = e^{1.43} = 4.16.
+$$
+
+Los intervalos de confianza (IC) del 95% para los coeficientes del modelo pueden obtenerse haciendo
+
+```{r, eval=TRUE, tidy=TRUE, size = 'normalsize', cache=FALSE, message=FALSE}
+# calculo del intervalos de confianza para los coeficientes
+confint.default(fit_reduced)[-1, ]
+```
+
+Similarmente, los IC del 95% para el OR puede obtenerse haciendo
+
+```{r, eval=TRUE, tidy=TRUE, size = 'normalsize', cache=FALSE, message=FALSE}
+# calculo del intervalos de confianza para el OR
+exp(confint.default(fit_reduced))[-1,]  
+```
+
+Ahora, a partir del modelo ajustado, las probabilidades estimadas pueden obtenerse como:
+
+```{r}
+## fitted probabilities 
+thetahat <- fitted(fit_reduced)
+thetahat[1:10]
+```
+
+### Bondad de ajuste
+
+Para verificar que el modelo de Regresión Logística tiene *buen* ajuste, podemos utilizar, por ejemplo, **la prueba de bondad de ajuste de Hosmer & Lemeshow**, el *pseudo* $R^2$ y la curva ROC.
+
+<br>
+
+**Hosmer & Lemeshow**
+
+Para más detalles sobre la prueba de Hosmer & Lemeshow ver [aquí](https://thestatsgeek.com/2014/02/16/the-hosmer-lemeshow-goodness-of-fit-test-for-logistic-regression/). En esta prueba, debe decidirse el parámetro $g$. Teóricamente, $g > p+1$, donde $p$ es el número de predictores. En nuestro caso, $p=4$ y, por lo tanto, $g>5$. Por simplicidad, seleccionaremos $g=6$. La prueba se encuentra implementada en la función `hoslem.test` del paquete `ResourceSelection`.
+
+```{r}
+## hosmer & lemeshow GoF test
+## usando g grupos
+g <- 6
+
+## valor p de la prueba de H & L
+hl <- hoslem.test(fit_reduced$y, fitted(fit_reduced), g = g)
+hl$p.value 
+```
+
+Basados en la prueba de bondad de ajuste de Hosmer & Lemeshow, podemos decir que el modelo de Regresión Logística ajustado *ajusta* bien puesto que el valor $p$ de la prueba es $>0.05$.
+
+<br>
+
+***pseudo***$R^2$
+
+Uno de los *pseudo* $R^2$ más utilizados es el $R^2_{\text{McFadden}}$. De acuerdo con el artículo original, valores de $R^2_{\text{McFadden}}$ entre 0.2 y 0.4 sugieren un **excelente ajuste** del modelo de Regresión Logística. Por otro lado, valores cercanos a 0 indican que el modelo no tiene ningún poder predictivo. Para más detalles, ver [esta](https://stats.stackexchange.com/questions/82105/mcfaddens-pseudo-r2-interpretation) discusión en `stackexchange`.
+
+Para estimar el $R^2_\text{pseudo}$ en `R` utilizamos la función `pR2()` del paquete `pscl`:
+
+```{r, message=FALSE}
+## pseudo R^2 para Regresión Logística
+pR2(fit_reduced)[4]
+```
+
+<br>
+
+**Curva ROC**
+
+Ahora calculemos el AUC utilizando las facilidades ofrecidas por el paquete `pROC`:
+
+```{r, message=FALSE}
+## calculo del AUC
+## ver http://web.expasy.org/pROC/ y ?roc para mas detalles
+(ROC <- roc(y ~ thetahat, data = d))
+```
+
+A partir de este resultado podemos concluir que el modelo es *bueno* para diferenciar piezas conformes de aquellas no conformes en este proceso de ensamble. En particular, el AUC es `r round(ROC$auc, 3)` $>0.7$.
+
+Finalmente, la curva ROC puede obtenese haciendo
+
+```{r, fig.width = 5, fig.height = 5, fig.align='center'}
+## gráfico de la curva ROC
+plot(ROC, las = 1, col = 4)
+```
+
+### Predicción
+
+Utilizando el modelo, podríamos entonces estimar la probabilidad de que la persona pase el programa cuando $\mathbf{x}_0 =($ `C` $,$ `T1` $,14, 21)$ haciendo:
+
+```{r, eval=TRUE, tidy=TRUE, size = 'normalsize', cache=FALSE, message=FALSE}
+## thetahat 
+x0 <- data.frame(x1 = 'C', 
+                 x3 = 14, 
+                 x4 = 21)
+theta_hat <- predict(fit_reduced, 
+                     newdata = x0, 
+                     type = 'response', 
+                     se.fit = TRUE)
+theta_hat
+```
+
+Por lo tanto, $\hat{\theta}|\mathbf{x}_0 = 0.893$. Un intervalo de confianza del 95% para $\theta|\mathbf{x}_0$ es
+
+$$0.8014\pm 1.96\times 0.118 = (0.57, 1)$$
+
+### Definición del *cutoff*
+
+Para construir la matriz de confusión y varias medidas de desempeño para 1000 *cutoffs* posibles y graficamos los resultados.
+
+Inicialmente cargamos a la sesión de trabajo un conjunto de funciones:
+
+```{r message=FALSE}
+## load functions
+source('https://www.dropbox.com/s/xclvdugfbrf5ryn/logistic-functions.R?dl=1')
+```
+
+Ahora definomos los *cutoffs* y determinamos, para cada uno, las medidas de desempeño:
+
+```{r}
+##  1000 cutoffs
+cutoff <- seq(.1, .9, length = 1000) 
+
+##  calculations
+res <- bycutoff2(fit_reduced, real = d$y, cutoff)
+res <- data.frame(cutoff = cutoff, res)
+
+## first 4 rows
+head(res, 4)
+```
+
+Finalmente graficamos los resultados:
+
+```{r fig.width = 6, fig.height = 6, fig.align='center'}
+##  gráfico
+with(res, matplot(cutoff, cbind(sensitivity, specificity, class_rate), 
+                  type = 'l', las = 1, ylim = c(0.6, 1), lwd = 2, 
+                  lty = 1, ylab = 'Value (%)'))
+legend('bottomright', c('Se', 'Sp', 'Acc'), lty = 1, col = 1:3, bty = 'n', lwd = 2)
+```
+
+A continuación determinamos diferentes *cutoffs* para tres criterios diferentes:
+
+1.  Usando $S_e \approx S_p$
+
+```{r}
+res[which.min(abs(res$sensitivity - res$specificity)), ] 
+```
+
+2.  Maximizando la tasa de clasificación correcta:
+
+```{r}
+res[which.max(res$class_rate), ] 
+```
+
+3.  Maximizando el *lift*:
+
+```{r}
+res[which.max(res$lift), ] 
+```
+
+## Ejemplo 2: una matriz de confusión
+
+En algunas aplicaciones sólo tenemos la matriz de confusión y queremos calcular las medidas de desempeño para el modelo de Regresión Logística:
+
+```{r message=FALSE}
+## matriz de confusion
+confusion <- matrix(c(160, 32,
+                       20, 246), ncol = 2, byrow = TRUE)
+colnames(confusion) <- rownames(confusion) <- c('Yes', 'No')
+confusion
+```
+
+La prueba de asociación $\chi^2$ produce
+
+```{r}
+## chi^2
+chisq.test(confusion)
+```
+
+lo cual confirma que *existe* una asociación entre la realidad observada a través de los datos y los resultados predichos por el modelo de Regresión Logística.
+
+A partir de la matriz de confusión podemos calcular varias medias de desempeño:
+
+```{r}
+## performance measures
+measures(confusion)
+```
+
+Finalmente, la curva ROC obtenerse y graficarse haciendo:
+
+```{r fig.width = 6, fig.height = 6, fig.align='center'}
+## ahora calculamos la curva ROC a partir de la matriz de confusión
+(ROC <- rft(confusion, las = 1))
+```
+
+El AUC resultante para esta curva es `r round(ROC$auc, 3)`. Esto indica que el modelo de Regresión Logística es bueno para disciminar entre personas que potencialmente comprarían el producto de aquellas que definitivamente no lo harían.
+
+## Homework
+
+**Fecha de entrega:** Abril 19, 2024.
+
+Cree usted que la configuración de la planta y el turno en el que se fabriquen las piezas son relevantes para que una persona pase el programa? En qué condiciones recomienda que se desarrolle la prueba del programa? Qué puede decir de $x_3$ y $x_4$? Cuál de las variables tiene *mayor importancia* en el modelo? Qué acciones implementaría para garantizar la *uniformidad* de la producción independiente de la configuración de la planta? Justifique ampliamente su respuesta.
+
+R:
+
+A partir de los resultados obtenidos con el modelo, la configuración de la planta es un un factor relevante para que una persona pase el problema, caso contrario con el turno, dónde no se evidencia una incidencia con el resultado.
+
+La recomendación sería que se utilice la configuración C para la planta, y mantener los parámetros 1 y 2 en niveles altos, a partir del modelo, se encontró que estos factores se encuentran relacionado con el éxito de la prueba de los trabajadores.
+
+X3 y X4 son dos variables significativas para el proceso, tiene una relación directamente proporcional con el éxito en el programa y tiene un error estándar bajo, es decir, tiene poca variabilidad.
+
+Esto hace que x4 y x3 sean las dos variables con mayor importancia para el proceso de estudiado.
+
+Además de la configuración de la planta, se pueden utilizar estrategias para definir un valor para el parámetro x3 y x4.
+
+1.  Para el parámetro x3, podemos definir su valor como 16 o más. Esto se debe a que la distribución de este parámetro cuando los operarios pasan la prueba tiende a estar sesgada hacia la izquierda, mientras que cuando no pasan la prueba, la distribución de este parámetro está sesgada hacia la derecha. En otras palabras, al alejarnos de la media del valor para x3 cuando no se pasa la prueba y ubicarnos por encima de la media, o igual, cuando se pasa la prueba, aumentamos la probabilidad de pasar la prueba.
+
+    ![](images/clipboard-2991307030.png){width="220"}
+
+2.  En cuanto al parámetro 4, la diferencia es más evidente. El valor máximo de x4 cuando los operarios no pasan la prueba es inferior a 25. Por lo tanto, se recomienda utilizar un valor igual o superior a 25 para el parámetro x4.
+
+    ![](images/clipboard-1153331712.png){width="241"}
+
+## Referencias
+
+Para más información sobre el modelo de Regresión Logística se sugiere consultar la [Sección 4.2](https://jivelez.github.io/book-adii/glm.html#regresi%C3%B3n-log%C3%ADstica) del texto [*Modelos de Regresión: Una aproximación práctica con R*](https://jivelez.github.io/book-adii/).

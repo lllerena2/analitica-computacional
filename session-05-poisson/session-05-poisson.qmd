@@ -1,0 +1,576 @@
+---
+title: "Analítica Computacional"
+subtitle: "Sesión #5: Regresión Poisson"
+abstract: "En esta práctica de `R` trabajaremos (1) la sintaxis del modelo de Regresión Poisson y (2) cómo estimar e interpretar el modelo."
+author: 
+  - name: Jorge I. Vélez, PhD
+    orcid: 0000-0002-3146-7899
+    url: https://jorgeivanvelez.netlify.app/
+    email: jvelezv@uninorte.edu.co
+    affiliations:
+      - name: Universidad del Norte, Barranquilla
+fontsize: 14pt
+toc: true
+toc-depth: 3
+date: "4/12/2024"
+self-contained: true
+lang: es
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(warn = -1)
+```
+
+## Introducción
+
+La Regresión Poisson es útil cuando se tiene una variable aleatoria respuesta $Y$ que representa conteos por unidad de distancia, área, volúmen o tiempo, y es de interés predecir la el número esperado de dichos conteos a partir de un conjunto de factores controlables independientes $X_1, X_2, \ldots, X_k$.
+
+En cuanto a la variable respuesta $Y$, el modelo probabilístico es $Y \sim \text{Poisson}(\lambda)$, con $\lambda>0$. Así, $$E[Y|X_1, X_2, \ldots, X_k] = \text{Var}[Y|X_1, X_2, \ldots, X_k] = \lambda.$$
+
+A partir de una muestra de tamaño $n$, el modelo de Regresión Poisson estimado es:
+
+```{=tex}
+\begin{align}
+\log\left(\hat{\lambda}\right) = \hat{\beta}_0 + \hat{\beta}_1x_1 + \hat{\beta}_2x_2 + \cdots +\hat{\beta}_kx_k
+\end{align}
+```
+
+
+donde $\hat\lambda$ es el número *esperado* de conteos o la *tasa* a la que ocurre el evento de interés. A partir de la expresión anterior, es fácil llegar a que
+
+```{=tex}
+\begin{equation}
+\hat\lambda = e^{\hat{\beta}_0 + \hat{\beta}_1x_1 + \hat{\beta}_2x_2 + \cdots +\hat{\beta}_kx_k}
+\end{equation}
+```
+
+Por lo tanto, $Y \sim \text{Poisson}(\hat{\lambda})$. A partir de esta expresión es posible calcular, por ejemplo, $P(Y = 3 | X_1, X_2, \ldots, X_k)$ ua partir del valor de $\hat{\lambda}$.
+
+
+
+## Paquetes
+
+En esta práctica utilizaremos funciones de los paquetes 
+`lmtest`, `AER` y `ggplot2`.
+
+```{r, message=FALSE}
+## verificar disponibilidad de lmtest
+if(!require(lmtest)) install.packages('lmtest')
+require(lmtest)
+
+## verificar disponibilidad de AER
+if(!require(AER)) install.packages('AER')
+require(AER)
+
+## verificar disponibilidad de ggplot2
+if(!require(ggplot2)) install.packages('ggplot2')
+require(ggplot2)
+```
+
+
+## _Caribbean Eggs_
+
+Caribbean Eggs, Inc. produce canastas de huevos de 6, 12, 18 y 30 unidades en sus granjas avícolas ubicadas en Sabanalarga, Atlántico. Las [gallinas ponedoras](https://i0.wp.com/www.corpmontana.com/blog/wp-content/uploads/2022/10/alimento-para-pollos-scaled.jpg?resize=1280%2C640&ssl=1) se alimentan con tres tipos de dieta (`A`,  `B` o `C`) y suplementos vitamínicos $x_1$ y $x_2$, ambos en ml/día. Después de un estricto proceso de seguimiento y control durante una semana, se registró el número de huevos producidos por 20 gallinas (i.e., galpón) por día.
+
+Los datos son los siguientes:
+
+```{r}
+## leer datos
+url <- 'https://www.dropbox.com/scl/fi/7z5obl6hincugvxx44jdq/eggs.txt?rlkey=oz3p4518ylsd3leozeud0pof2&dl=1'
+d <- read.table(url, header = TRUE)
+d$diet <- LETTERS[d$diet]
+head(d)
+```
+
+
+La distribución del número de huevos producidos/galpón en 1 semana:
+
+```{r barplot, eval=TRUE, fig.align='center', message=FALSE, fig.width = 6, fig.height = 5}
+## barplot con ggplot2
+d0 <- as.data.frame(table(d$y))
+ggplot(d0, aes(x = Var1, y = Freq)) +
+  geom_bar(stat = 'identity') +
+  xlab('Número de huevos/galpón/día') +
+  ylab('Número de galpones') +
+  theme_minimal()
+``` 
+
+[Aquí](https://r-graph-gallery.com/218-basic-barplots-with-ggplot2.html) hay más información sobre cómo utilizar `ggplot2` para construir el gráfico de barras
+
+Puesto que trabajamos con conteos, una distribución de probabilidad posible que describe la variable $Y$ es $Y\sim \text{Poisson}(\lambda)$, $\lambda>0$. A partir de la muestra, se obtiene que
+
+$$
+\hat\lambda = \frac{1}{100}\sum_{i=1}^{100}y_i = `r round(mean(d$y), 3)`
+$$
+
+Sin embargo, observe que la estimación de $\lambda$ no tienen en cuenta los suplementos $x_1$ y $x_2$, ni  `diet`, lo cual sería deseable.
+
+
+### Ajuste del modelo 
+
+Teniendo en cuenta las características de la variable respuesta `y`, es natural pensar que un modelo de Regresión Poisson puede llegar a ser una buena alternativa.
+
+Este modelo puede ajustarse en `R` haciendo:
+
+```{r modelopois, size = 'normalsize', cache=FALSE, message=FALSE}
+## modelo de Regresión Poisson
+## la funcion clave es glm --- para ayuda ver ?glm
+## como la respuesta corresponde a conteos, usamos family = poisson()
+fit <- glm(y ~ ., data = d, family = poisson())
+
+# coeficientes estimados
+summary(fit) 
+```
+
+A partir de estos resultados, el modelo ajustado es:
+
+$$
+\log(\hat{\lambda}) = -1.763 + 0.363x_1 - 0.167x_2 + 2D_B + 1.76D_C
+$$ 
+
+donde $D_B$ y $D_C$ son variables indicadoras que representan el tipo de dieta que se proporciona.
+
+
+### Tabla ANOVA
+
+Para determinar si el modelo ajustado es mejor que el modelo `y ~ 1`, usamos una prueba de razón de verosimilitud (LRT en inglés). Este procedimiento es similar a realizar una Prueba de Significancia Global en Regresión Lineal Múltiple.
+
+Aunque esta prueba esta implementada en el paquete `base` de `R`, el reporte de los resultados es más informativo cuando usamos la función `lrtest` del paquete `lmtest`:
+
+```{r lrt, eval=TRUE, tidy=TRUE, size = 'normalsize', cache=FALSE, message=FALSE}
+## comparación del modelos usando la LRT
+## ajustamos un modelo simple
+nullmodel <- glm(y ~ 1, data = d, family = poisson())
+
+## LRT
+lrtest(nullmodel, fit)
+```
+
+**Conclusión.** El modelo de Regresión Poisson que incluye las covariables $x_1, x_2$ y 
+`diet` es significativamente mejor para explicar el número de huevos producidos por galpón a la semana que usar uno sin ellas.
+
+
+### Prueba de Bondad de Ajuste
+
+Para determinar que el modelo tiene **buen ajuste**, usamos el *Deviance*. Para más detalles, ver la sección [4.4.9](https://bookdown.org/roback/bookdown-BeyondMLR/ch-poissonreg.html#sec-PoisGOF) del texto *Beyond Multiple Linear Regression*. La idea fundamental es consiste calcular el valor $p$ de la prueba de hipótesis
+
+$$
+\begin{cases}
+H_0&: \text{El modelo propuesto tiene buen ajuste.} \\
+H_1&: \text{El modelo propuesto NO tiene buen ajuste.}
+\end{cases}
+$$
+
+En este caso, el estadístico de prueba es una $\chi^2$. El valor $p$ puede cacularse fácilmente de la siguiente manera:
+
+```{r}
+## deviance test
+with(fit, 1 - pchisq(deviance, df.residual))
+```
+
+Como el valor $p$ es $>0.05$, decimos que el modelo propuesto **ajusta bien** a los datos.
+
+
+
+### Sobredispersión
+
+El modelo de Regresión Poisson puede sufrir de [sobredispersión](https://en.wikipedia.org/wiki/Overdispersion). Este concepto se refiere a que, en la distribución Poisson, $E[Y] = \lambda < \text{Var}[Y]$, es decir, que el supuesto principal de la distribución no se cumple. 
+
+A partir del modelo de Regresión Poisson ajustado, podemos estimar $\phi$ como
+
+$$
+\hat{\phi} = \frac{1}{n-p}\sum_{i=1}^n\hat{\rho}_i
+$$
+
+donde $p=k+1$ y 
+
+$$
+\hat{\rho}_i = \frac{y_i - \hat{\lambda}_i}{\sqrt{\hat\lambda_i}}
+$$
+
+corresponde a los residuales de Pearson.
+
+Una posible solución a la sobredispersión de los datos es ajustar un modelo de Regresión Poisson con función de enlace tipo `quasipoisson` y estimar el parámetro de sobredispersión $\phi$.
+
+En este caso, 
+
+
+```{r}
+## ajuste del modelo con enlace quasipoisson
+fitq <- glm(y ~ ., data = d, family = quasipoisson)
+
+## ahora estimamos la dispersión
+summary(fitq)$dispersion
+```
+
+Note que $\hat{\phi}$ = `r round(summary(fitq)$dispersion, 3)`, lo cual indica que, al parecer, los datos **no** están sobredispersos después de incluir $x_1$, $x_2$ y `diet` para explicar el número de huevos/galpón/día.
+
+Para estar *completamente* seguros, podemos hacer una prueba formal del tipo
+
+$$
+\begin{cases}
+H_0: \phi = 1 \\
+H_1: \phi > 1
+\end{cases}
+$$ 
+
+En `R`, esta prueba está implementada en la función `dispersiontest` del paquete `AER`. El valor $p$ puede obtenerse haciendo
+
+```{r, message=FALSE}
+## prueba para el coeficiente de dispersión
+dispersiontest(fit, trafo = 1)$p.value
+```
+
+**Conclusión:** No hay evidencia de sobredispersión. Cuando hay sobredispersión, una alternativa al modelo de Regresión Poisson es una [Regresión Binomial Negativa](https://bookdown.org/roback/bookdown-BeyondMLR/ch-poissonreg.html#negative-binomial-modeling). Este modelo puede ajustarse en `R` con la función `glm.nb()` del paquete `MASS`.
+
+
+### Exceso de ceros
+
+Los datos provenientes de procesos de conteo podrían sufrir de [exceso de ceros](https://stats.idre.ucla.edu/stata/dae/zero-inflated-poisson-regression/). Esto se refiere, fundamentalmente, a que el número de ceros en los datos es mayor al que esperaríamos si estos siguieran, en realidad, una distribución Poisson.
+
+Por ejemplo, si $Y\sim \text{Poisson}(\lambda)$ y tuviéramos una muestra de tamaño $n$, el número esperado de ceros sería $$n_0 = n\,P(Y=0|\lambda) = n\,e^{-\lambda}$$ Si en la muestra de tamaño $n$ observamos que el número de ceros es $n^\prime>>>n_0$, entonces los datos están *inflados* con ceros. 
+
+En nuestro caso, tenemos `r with(d, sum(y == 0))` ceros y esperamos `r round(NROW(d)*exp(-mean(d$y)), 1)`, por lo que *podría* existir un exceso de ceros.
+
+Veamos si esta diferencia es estadísticamente significativa:
+
+```{r}
+## probando si el número de ceros esperado difiere del observado
+prop.test(x = c(28, 5), n = c(100, 100), 
+          alternative  = 'two.sided')
+```
+
+Al comparar la proporciones observadas y esperadas de ceros, observamos que hay **mayor** presencia de ceros en los datos. Por lo tanto, un modelo del tipo [Zero-inflated Poisson Regression](https://stats.idre.ucla.edu/r/dae/zip/) sería más apropiado. [Aquí](https://www.ncss.com/wp-content/themes/ncss/pdf/Procedures/NCSS/Zero-Inflated_Poisson_Regression.pdf) hay más detalles sobre la formulación matemática del modelo.
+
+
+### Cálculo de $\hat{\lambda}$ e inferencia
+
+Por simplicidad, trabajaremos con el modelo de Regresión Poisson ajustado que se encuentra en el objeto `fit`.
+
+Recordemos $\hat{\lambda}$ es el número *esperado* de huevos/galpón/día cuando se conocen las variables $x_1,x_2$ y `diet`. En otras palabras, $$\hat{\lambda} = f(x_1, x_2, \text{diet}).$$
+
+A partir del modelo ajustado, el número promedio de huevos por galpón por día puede obtenerse como:
+
+```{r}
+## cálculo de lambdahat estimadas
+lambdahat <- predict(fit, type = 'response')
+
+## ahora incluyamos lambdahat para los 5 primeros individuos
+d <- data.frame(id = 1:NROW(d), d, lambdahat)
+head(d, 5)
+```
+
+Así por ejemplo, cuando $x_1 = 6$, $x_2 = 3$ y se usa `diet`$= \text{B}$, esperaríamos, en promedio, obtener `r round(lambdahat[1],2)` huevos/galpón/día. Esto implica que $\hat{\lambda}|_{x_1=6, x_2 = 3, \text{diet} = \text{B}} = 6.79$.
+
+
+Si las condiciones son $\mathbf{x}_0 = (5, 3)$ y se usa la dieta `B`, el valor de $\hat\lambda$ puede estimarse como:
+
+```{r prediccion, eval=TRUE, tidy=FALSE, size = 'normalsize', cache=FALSE, message=FALSE}
+# que pasa cuando (5, 3, B) ?
+x0 <- data.frame(x1 = 5, x2 = 3, diet = 'B')
+predict(fit, newdata = x0, type = 'response', se.fit = TRUE)
+```
+
+Un intervalo de confianza del 95% para $\lambda|_{x_1=5, x_2=3, \text{diet}=\text{B}}$ está dado por
+
+$$
+4.725 \pm 1.96\times0.494 = (3.76, 5.69) 
+$$
+
+
+### Cálculo de probabilidades
+
+A partir del modelo ajustado es posible calcular probabilidades teniendo en cuenta las condiciones $(5, 3, \texttt{B})$. Por ejemplo la probabilidad de que en un galpón se produzcan *exactamente* 2 huevos/día puede expresarse como:
+
+$$P(Y = 2 | x_1, x_2, \text{diet}) = \frac{e^{-\hat\lambda}{\hat\lambda}^2}{2!}$$
+
+donde 
+
+$$
+\hat{\lambda} = e^{-1.763 + 0.363x_1 - 0.167x_2 + 2D_B + 1.76D_C}
+$$
+
+y las variables $D_B$ y $D_C$ son variables indicadoras.
+
+Por lo tanto,
+
+$$P(Y = 2 | \mathbf{x}_0) = \frac{e^{-4.725}{4.725}^2}{2!} = 0.099.$$
+
+Esto implica que la probabilidad de que con esas condiciones se produzcan _exactamente_ 2 huevos/galpón/semana es $\approx 10\%$.
+
+Veamos gráficamente cómo cambia $P(Y = y | \mathbf{x}_0)$ cuando $y = \{1, 2, \ldots, 15\}$: 
+
+```{r, fig.align='center', fig.width=6, fig.height=5}
+## distribución de probabilidad basados en lambda
+set.seed(123)
+y <- 0:15
+lambda <- predict(fit, newdata = x0, type = 'response')
+proba <- dpois(y, lambda)
+plot(y, proba, las = 1, type = 'h', col = 4, 
+     ylab = expression('P(Y = y | '*hat(lambda)*")"),
+     xlab = 'Número de huevos/día (y)',
+     lwd = 4)
+```
+
+### Simulación
+
+A partir de los resultados obtenidos, es posible simular datos de una distribución Poisson con parámetro $\hat\lambda$ para cada galpón. Para ello utilizamos la función `rpois()`.
+
+Supongamos que es de interés determinar el percentil 90 del número de huevos/galpón/día cuando $\hat{\lambda}|_{x_1=5, x_2=3, \text{diet}=\text{B}} = 4.72$.
+
+Primero simulamos $B=10000$ observaciones de una distribución Poisson con parámetro $\hat\lambda = 4.72$
+
+```{r}
+## simulación
+set.seed(1)
+B <- 10000
+ysim <- rpois(B, 4.72)
+ysim[1:10]
+```
+
+Finalmente, el percentil 90 puede calcularse como
+
+```{r}
+## percentil 95
+quantile(ysim, probs = 0.9)
+```
+
+Por lo tanto, el 10% de nuestros galpones tendrían una producción de más de 7 huevos/día bajo las condiciones $x_1=5, x_2=3$ y la dieta `B`.
+
+Si fuese de interés calcular $P(Y > 4 | \hat{\lambda})$, existen 2 posibilidades:
+
+1. **Teóricamente.** En este caso calculamos
+
+$$
+\begin{eqnarray}
+P(Y > 4 | \hat\lambda = 4.72) &=& 1 - P(Y \leq 4 | \hat\lambda = 4.72) \\\nonumber
+                     &=& 1 - \sum_{y=0}^4\frac{e^{-4.72}(4.72)^y}{y!}\nonumber\\
+                     & = & 0.509
+\end{eqnarray}
+$$
+ 
+ Esta probabilidad puede calcularse en `R` haciendo 
+ 
+```{r}
+## cálculo probabilidad
+1 - sum(dpois(0:4, 4.72))
+```
+
+
+2. **Via simulación.** Para esto usamos el objeto `ysim`, la función `mean` y el operador lógico `>`:
+
+```{r}
+## P(Y > 4 | lambda) utilizando simulación
+mean(ysim > 4)
+```
+
+Como era de esperarse, los resultados _no_ coinciden, pero constituyen una muy buena aproximación :)
+
+
+## Homework
+
+**Fecha de entrega:** Abril 19, 2024.
+
+En un proceso de ensamble se controlan la configuración (variable $x_1$, con niveles `A`, `B` y `C`) de la planta,  el turno en el que se realiza el programa (variable $x_2$, con niveles `1`, `2` y `3`), y dos variables numéricas $x_3$ y $x_4$ de las que no se tiene mayor información. Al final del proceso se registra el número de piezas defectuosas que, desafortunadamente, se produjeron. 
+
+Los datos son los siguientes:
+
+
+```{r echo=FALSE}
+## lectura de datos
+url <- 'https://www.dropbox.com/scl/fi/3lsvu0zurp9d9cvt1j2ig/entrenamiento_esa.txt?rlkey=812vph23ja6sso5q4q4jowip7&dl=1'
+d <- read.table(url, heade = TRUE)
+d$y <- NULL
+head(d)
+```
+
+Así por ejemplo, al producir la unidad #5, se encontraron 2 piezas defectuosas por cada lote de 10 unidades.
+
+**Preguntas**
+
+1. Podríamos decir que la configuración de la planta y el turno en el que se produzan los lotes son _relevantes_?  En qué condiciones $(x_3, x_4)$ el número de unidades defectuosas por lote tiende a cero? <br> **_Nota_:** En caso de que existan variables no significativas, reajuste el modelo.
+
+Inicialmente se presenta una visualización de la información, explorando gráficamente si existe 
+
+```{r}
+## barplot con ggplot2
+d0 <- as.data.frame(table(d$piezas))
+ggplot(d0, aes(x = Var1, y = Freq)) +
+  geom_bar(stat = 'identity') +
+  xlab('Número de piezas defectuosas') +
+  ylab('conteo') +
+  theme_minimal()
+```
+
+**Modelo 1**
+
+```{r}
+fit <- glm(piezas ~ ., data = d, family = poisson())
+
+# coeficientes estimados
+summary(fit) 
+```
+
+```{r}
+nullmodel <- glm(piezas ~ 1, data = d, family = poisson())
+
+## LRT
+lrtest(nullmodel, fit)
+```
+
+Dado que este modelo no es mejor que un modelo nulo, se ajusta un nuevo modelo.
+
+**Modelo 2**
+
+```{r}
+fit <- glm(piezas ~ x3 + x4, data = d, family = poisson())
+
+# coeficientes estimados
+summary(fit) 
+```
+
+
+```{r}
+nullmodel <- glm(piezas ~ 1, data = d, family = poisson())
+
+## LRT
+lrtest(nullmodel, fit)
+```
+
+Adicionalmente, se evalúa sobredispersión:
+
+
+```{r}
+## ajuste del modelo con enlace quasipoisson
+fitq <- glm(piezas ~ ., data = d, family = quasipoisson)
+
+## ahora estimamos la dispersión
+summary(fitq)$dispersion
+```
+
+```{r}
+## prueba para el coeficiente de dispersión
+dispersiontest(fit, trafo = 1)$p.value
+```
+
+
+```{r}
+## cálculo de lambdahat estimadas
+lambdahat <- predict(fit, type = 'response')
+
+## ahora incluyamos lambdahat para los 5 primeros individuos
+d <- data.frame(id = 1:NROW(d), d, lambdahat)
+head(d, 5)
+```
+
+Respuestas 1:
+
+
+- La configuración de la planta y el turno no son variables significativas para explicar la cantidad de piezas defectuosas. Por tanto, no son revelantes.
+
+- El modelo ajustado es:
+
+$$
+\log(\hat{\lambda}) = 0.03276 + 0.03686x_3 + 0.02555x_4
+$$ 
+
+por tanto,
+
+$$
+\begin{equation}
+\hat\lambda = e^{0.03276 + 0.03686x_3 + 0.02555x_4}
+\end{equation}
+$$
+
+hipotéticamente,
+
+$$
+\hat{\lambda}|_{x_3=0, x_4=0} = e^{0.03276} = 1.099846
+$$
+
+
+Con esta ecuación se concluye que $\hat\lambda$ tiende a cero sólo si $x_3$ y $x_4$ disminuyen lo suficiente. No obstante, muy probablemente por la naturaleza del proceso esos valores no puedan ser menores de 0, por tanto, teóricamente $\hat\lambda$ puede tender a 1, y no a 0.
+
+
+2.  El Jefe de la Planta está convencido que al fabricar productos en las condiciones $x_3=15$ y $x_4=20$, el número promedio de unidades defectuosas por lote se reduce en un 40\%, aproximadamente.  Está usted de acuerdo?  Si $x_4 = 20$, determine el valor de $x_3$ tal que el número promedio de unidades defectuosas por lote se reduce a sólo 2 unidades. Calcule la probabilidad de que, en estas condiciones, hayan 5 unidades defectuosas por lote.
+
+Respuesta 2:
+
+
+```{r}
+# que pasa cuando (x3=15, X4=20) ?
+x0 <- data.frame(x3 = 15, x4 = 20)
+predict(fit, newdata = x0, type = 'response')
+```
+
+```{r}
+## distribución de probabilidad basados en lambda
+set.seed(123)
+y <- 0:15
+lambda <- predict(fit, newdata = x0, type = 'response')
+proba <- dpois(y, lambda)
+plot(y, proba, las = 1, type = 'h', col = 4, 
+     ylab = expression('P(Y = y | '*hat(lambda)*")"),
+     xlab = 'Número de piezas defectuosas',
+     lwd = 4)
+```
+Con esas condiciones, se esperan 2.99 piezas defectuosas y esto no representa una diferencia del valor esperado de la muestra de los datos: `r mean(d$piezas)`.
+
+
+Para determinar x3, dado x4=20 y lambda=2
+
+$$
+2 = e^{0.03276 + 0.03686x_3 + 0.02555(20)}
+$$
+Por tanto,
+
+
+$$
+ln(2) = 0.03276 + 0.03686x_3 + 0.02555 * 20 \\
+
+0.03686x_3 = ln(2) - 0.03276 - 0.511 \\
+
+x_3 = \frac{ln(2) - 0.54376}{0.03686} \\
+
+x_3 = 4.052826
+
+$$
+
+Y luego la predicción:
+
+```{r}
+x0 <- data.frame(x3 = 4.052826, x4 = 20)
+predict(fit, newdata = x0, type = 'response')
+```
+
+Finalmente, para estimar la probabilidad de que la cantidad de piezas defectuosas sea 5 dado $\hat\lambda = 2$
+
+
+```{r}
+dpois(5, 2)
+```
+
+O simulando:
+
+
+```{r}
+## simulación
+set.seed(1)
+B <- 100000
+ysim <- rpois(B, 2)
+mean(ysim == 5)
+```
+
+
+## Recursos adicionales
+
+1. [Regression](https://cran.r-project.org/web/packages/pscl/vignettes/countreg.pdf) Models for Count Data in `R`
+2. Sección [4.3](https://jivelez.github.io/book-adii/glm.html#regresi%C3%B3n-poisson) de [_Modelos de Regresión: Una aproximación práctica con R_](https://jivelez.github.io/book-adii/)
+3. Poisson Regression in [SMDA](https://stats.oarc.ucla.edu/r/dae/poisson-regression/)
+4. Chapter [4](https://bookdown.org/roback/bookdown-BeyondMLR/ch-poissonreg.html) de [_Beyond Multiple Linear Regression_](https://bookdown.org/roback/bookdown-BeyondMLR/) por [Paul Roback](https://www.stolaf.edu/profile/roback) & [Julie Legler](https://en.wikipedia.org/wiki/Julie_Legler)
+
+
+
