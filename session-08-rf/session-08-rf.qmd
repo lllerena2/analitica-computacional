@@ -390,22 +390,15 @@ hist(d$class)
 ```
 
 ```{r}
-
 d_subset <- d[, !names(d) %in% "id"]
+# convertimos la clases en categorías
 d_subset$class <- factor(d_subset$class)
 
-## crear particion
+## Split de los datos
 set.seed(1)
 intrain <- createDataPartition(y = d_subset$class, p = 0.8, list = FALSE)
 training <- d_subset[intrain,]
 testing <- d_subset[-intrain,]
-
-table(training$class)
-```
-
-```{r}
-training
-
 ```
 
 ### Modelo base (todas las variables)
@@ -442,46 +435,6 @@ ptesting <- predict(black_box_rf, testing)
 confusionMatrix(ptesting, testing$class)
 ```
 
-### Curvas ROC y AUC
-
-Ahora, con el objeto `rf_model_grid` podemos construir las curvas ROC para *training* y *testing*:
-
-```{r, fig.align='center', fig.width=5, fig.height=5, message=FALSE}
-## cálculos
-ptraining <- predict(black_box_rf, training)
-ptesting <- predict(black_box_rf, testing)
-
-## confusion
-mtraining <- table(class_rf = ptraining, class_real = training$class)
-mtesting <- table(class_rf = ptesting, class_real = testing$class)
-
-## plot
-set.seed(2)
-mycols <- brewer.pal(n = 5, name = 'Dark2')
-mycols <- sample(mycols)
-res_training <- rft(mtraining[2:1, 2:1], las = 1, line.col = mycols[2])
-res_testing <- rft(mtesting[2:1, 2:1], las = 1,  line.col = mycols[3], add = TRUE)
-legend('bottomright', c('training', 'testing'), col = mycols[2:3], lty = 1, bty = 'n')
-```
-
-
-El AUC para los datos de *training* y *testing* es
-
-```{r}
-## AUCs resultantes
-c(AUC_training = res_training$auc, 
-  AUC_testing = res_testing$auc)
-```
-
-Otras medidas de desempeño comunes pueden obtenerse haciendo
-
-```{r}
-## performance
-performance <- data.frame(training = measures(mtraining), 
-                          testing = measures(mtesting))
-performance
-```
-
 
 ### Selección de varaibles más imporantes
 
@@ -498,7 +451,7 @@ vip(black_box_rf, num_features = 20) + theme_minimal()
 
 Al parecer, las 5 variables más importantes son `x25`, `x26`, `x24`, `x14` y `x21` con valores superiores a 40
 
-#### Mejorando el modelo
+### Mejorando el modelo
 
 Una forma de mejorar el modelo es usando *menos* variables predictoras. Para ello, podemos identificar el top 5 de estas utilizando el algoritmo [`OneR`](https://cran.r-project.org/web/packages/OneR/index.html). El artículo original fue publicado por [Holte (1993)](https://link.springer.com/article/10.1023%2FA%3A1022631118932).
 
@@ -512,57 +465,77 @@ training[, -ncol(training)] <- apply(training[, -ncol(training)], 2, as.factor)
 data <- optbin(training)
 model <- OneR(class ~ ., data = data, verbose = TRUE)  
 ```
-En este caso, las variables `x11`, `x17`, `x18` y `x40` parecen ser las *mejores* predictoras de `class`.
 
-Las medidas de desempeño y la regla de decisión del modelo con sólo `x11` pueden obtenerse haciendo
+En este caso, las variables `x25`, `x24`, `x23`, `x21` y `x7`parecen ser las *mejores* predictoras de `class`.
+
+Las medidas de desempeño y la regla de decisión del modelo con sólo `x25` pueden obtenerse haciendo
 
 ```{r}
 ## resultados modelo OneR
 summary(model)
 ```
 
+#### Modelo con 1 variable
+
 Ahora, entrenemos y validemos un modeo de RF sólo con `x25`.
 
 ```{r}
-## modelo RF con x11
 set.seed(123)
-rf_x25 <- train(
-  class ~ x25, 
-  data = training, 
-  method = "rf",
-  trControl = trainControl("repeatedcv", 
-                           number = 10, 
-                           repeats = 3))
+
+training$class = factor(training$class)
+rf_x25 <- randomForest(class ~ x25, data = training, importance=TRUE, ntree=100)
+print(rf_x25)
 ```
 
-Las curvas ROC para *training* y *testing* son:
-
-```{r, fig.align='center', fig.width=5, fig.height=5, message=FALSE}
-## cálculos
-testing[, -ncol(testing)] <- apply(testing[, -ncol(testing)], 2, as.factor)
-ptraining <- predict(rf_x11, training)
-ptesting <- predict(rf_x11, testing)
-
-## confusion
-mtraining <- table(class_rf = ptraining, class_real = training$class)
-mtesting <- table(class_rf = ptesting, class_real = testing$class)
-
-## plot
-res_training <- rft(mtraining[2:1, 2:1], las = 1, line.col = mycols[2])
-mtext('Curvas ROC usando x11', side = 3, line = .5, cex = 1)
-res_testing <- rft(mtesting[2:1, 2:1], las = 1,  line.col = mycols[3], add = TRUE)
-legend('bottomright', c('training', 'testing'), col = mycols[2:3], lty = 1, bty = 'n')
-```
-
-El AUC y otras medidas de desempeño pueden obtenerse haciendo
 
 ```{r}
-## AUC
-performance <- data.frame(
-  training = c(measures(mtraining), auc = res_training$auc),
-  testing = c(measures(mtesting), auc = res_testing$auc)
-  )
-performance
+## cálculos
+testing[, -ncol(testing)] <- apply(testing[, -ncol(testing)], 2, as.factor)
+ptraining <- predict(rf_x25, training)
+ptesting <- predict(rf_x25, testing)
+
+confusionMatrix(ptraining, training$class)
+```
+```{r}
+testing$class = factor(testing$class)
+confusionMatrix(ptesting, testing$class)
 ```
 
+
+#### Modelo con top 15 varaibles importantes
+
+```{r}
+set.seed(123)
+
+training$class = factor(training$class)
+rf_top15 <- randomForest(class ~ x25+x24+x23+x21+x7+x22+x20+x26+x6+x2+x14+x15+x19+x17+x8 ,data = training, importance=TRUE, ntree=200)
+print(rf_top15)
+```
+
+
+```{r}
+## cálculos
+testing[, -ncol(testing)] <- apply(testing[, -ncol(testing)], 2, as.factor)
+ptraining <- predict(rf_top15, training)
+ptesting <- predict(rf_top15, testing)
+
+confusionMatrix(ptraining, training$class)
+```
+
+```{r}
+testing$class = factor(testing$class)
+confusionMatrix(ptesting, testing$class)
+```
+
+### Conclusiones
+
+A partir de los modelso construidos, podemos concluir:
+
+los datos logran ajustarse al fenómeno modelado, por lo que es posible constuir modelo que permitan predecir la clase de chikunguña que los paciente pueden tener a partir de los síntomas.
+
+Inicialmente se construye un modelo con todas la varaibles, 
+
+luego se intentó co una variable
+
+posteriormente se intentó añadir 5, 7 , 10 varaibles, sin embargo, sólo al aumentar varaibles, el modelo es capaz de identificar los chikunguñas más críticos y no antes
 
