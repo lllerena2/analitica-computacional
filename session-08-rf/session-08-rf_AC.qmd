@@ -1,0 +1,626 @@
+---
+title: "Analítica Computacional"
+subtitle: "Sesión #7: _Random Forests_"
+description: "En esta práctica de `R` trabajaremos la sintaxis para ajustar y validar un modelo basado en RF."
+author: 
+  - name: Jorge I. Vélez, PhD
+    orcid: 0000-0002-3146-7899
+    url: https://jorgeivanvelez.netlify.app/
+    email: jvelezv@uninorte.edu.co
+    affiliations:
+      - name: Universidad del Norte, Barranquilla
+fontsize: 14pt
+date: "4/19/24"
+self-contained: true
+lang: es
+toc: true
+toc-title: ""
+toc-depth: 3
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(warn = -1)
+```
+
+## Introducción
+
+*Random Forest* (RF) es una técnica no paramétrica de aprendizaje supervisado propuesta por [Leo Breiman](https://rdcu.be/bYSZp) en 2001.
+
+Para una pequeña introducción, ver la [sección 3](https://victorzhou.com/blog/intro-to-random-forests/) del *post* de [Victor Zhou](https://victorzhou.com/about/).
+
+<br>
+
+```{r rfpic, echo=FALSE, out.width="85%", fig.cap="Un _forest_ no tan _random_. Imagen tomada de [aquí](https://unsplash.com/photos/19SC2oaVZW0).", fig.align='center', message=FALSE}
+require(knitr)
+knitr::include_graphics("https://images.unsplash.com/photo-1440342359743-84fcb8c21f21?ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&ixlib=rb-1.2.1&auto=format&fit=crop&w=1470&q=80")
+```
+
+<br>
+
+## Paquetes
+
+Para esta práctica se requieren los paquetes:
+
+```{r, message=FALSE}
+## paquetes para este laboratorio
+if(!require(randomForest)) install.packages('randomForest')
+require(randomForest)
+
+if(!require(caret)) install.packages('caret')
+require(caret)
+
+if(!require(RColorBrewer)) install.packages('RColorBrewer')
+require(RColorBrewer)
+
+if(!require(dplyr)) install.packages('dplyr')
+require(dplyr)
+```
+
+## Ejemplo
+
+### Funciones
+
+Inicialmente, cargamos las funciones que hemos utilizado con anterioridad para evaluar el desempeño del Modelo de Regresión Logística:
+
+```{r, message=FALSE}
+## load functions
+source('https://www.dropbox.com/s/xclvdugfbrf5ryn/logistic-functions.R?dl=1')
+```
+
+### Datos
+
+Consideraremos los siguientes datos:
+
+```{r}
+## lectura de datos
+d <- read.csv("https://www.dropbox.com/s/a77erydd1ip6lnr/divorce.csv?dl=1", 
+                header = TRUE, sep = ',')
+## primeras 3 filas
+head(d, 3)
+```
+
+provenientes de [este](https://dergipark.org.tr/tr/download/article-file/748448) artículo. Más información sobre los datos en [UCI-MLR](https://archive.ics.uci.edu/ml/datasets/Divorce+Predictors+data+set).
+
+Las variables relevantes son `class` que corresponde a si la persona está divorciada (`y = 1`) o no (`y = 0`), y $x_j = \{0, 1, 2, 3, 4\}$ representa la respuesta en la $j$-ésima pregunta $(j=1,2,\ldots,54).$
+
+### Modelo RF
+
+Inicialmente construimos los datos de *training* y *testing* con las proporciones 80/20:
+
+```{r}
+## selección de los datos y operaciones
+d[,-ncol(d)] <- apply(d[,-ncol(d)], 2, as.numeric)
+d$class <- factor(d$class, levels = 0:1)
+
+## crear particion
+set.seed(1)
+intrain <- createDataPartition(y = d$class, p = 0.8, list = FALSE)
+training <- d[intrain,]
+testing <- d[-intrain,]
+```
+
+Ahora ajustamos el modelo de R utilizando la función `train` del paquete `caret`. Observe que usamos $10-$fold *cross validation* con 3 repeticiones.
+
+Cuando `method = 'rf'` debe optimizarse el parámetro `mtry`. Con ayuda del argumento `tuneLength` evaluamos 10 valores diferentes.
+
+```{r, message=FALSE}
+## ajuste del modelo RF
+set.seed(123)
+rf_model <- train(
+  class ~ . , 
+  data = training, 
+  method = "rf",
+  trControl = trainControl("repeatedcv", 
+                           number = 10, repeats = 3),
+  tuneLength = 10)
+
+## resultados
+rf_model
+```
+
+Gráficamente los resultados pueden representarse haciendo
+
+```{r, fig.align='center', fig.width=5.5, fig.height=5.5}
+# cp (complexity parameter)
+plot(rf_model)
+```
+
+Para obtener la mejor combinacion de parámetros hacemos:
+
+```{r}
+## mejor modelo
+rf_model$bestTune
+```
+
+### Desempeño del modelo
+
+A continuación evaluamos el desempeño de este modelo
+
+```{r}
+## confusion matrix for training
+black_box_rf <- rf_model$finalModel
+ptraining <- predict(black_box_rf, training)
+confusionMatrix(ptraining, training$class)
+```
+
+```{r}
+## confusion matrix for testing
+ptesting <- predict(black_box_rf, testing)
+confusionMatrix(ptesting, testing$class)
+```
+
+### Cambiando `ntrees`
+
+Usemos `grid-search` fijando `mtry = 19` y cambiando `ntrees`:
+
+```{r, message=FALSE}
+## crear rejilla 
+tunegrid <- expand.grid(.mtry = 19)
+modellist <- list()
+
+## control
+control <- trainControl(method = 'repeatedcv',
+                        number = 10,
+                        repeats = 3,
+                        search = 'grid')
+
+## usando diferentes valores para ntree
+for(ntree in c(100, 200, 300, 400, 500)){
+  set.seed(123)
+  fit <- train(class ~ .,
+               data = training,
+               method = 'rf',
+               metric = 'Accuracy',
+               tuneGrid = tunegrid,
+               trControl = control,
+               ntree = ntree)
+  key <- toString(ntree)
+  modellist[[key]] <- fit
+}
+```
+
+El desempeño promedio para diferentes valores de `ntrees` es:
+
+```{r}
+# resampling 
+results <- resamples(modellist)
+out <- list(mean_values = colMeans(results$values[,-1]),
+            sd_values = apply(results$values[,-1], 2, sd))
+out$mean_values 
+```
+
+Con base en estos resultados, escogemos un modelo de RF con `mtry = 19` y `ntrees = 100`.
+
+A partir del modelo con `resamples()` podemos predecir `class` para los datos *training*:
+
+```{r, fig.align='center'}
+## confusion matrix for training
+rf_model_grid <- modellist[['100']]$finalModel
+ptraining <- predict(rf_model_grid, data = training)
+confusionMatrix(ptraining, training$class)
+```
+
+Y finalmente para *testing*:
+
+```{r}
+## confusion matrix for testing
+rf_model_grid <- modellist[['100']]$finalModel
+ptesting <- predict(rf_model_grid, testing)
+confusionMatrix(ptesting, testing$class)
+```
+
+### Curvas ROC y AUC
+
+Ahora, con el objeto `rf_model_grid` podemos construir las curvas ROC para *training* y *testing*:
+
+```{r, fig.align='center', fig.width=5, fig.height=5, message=FALSE}
+## cálculos
+ptraining <- predict(rf_model_grid, training)
+ptesting <- predict(rf_model_grid, testing)
+
+## confusion
+mtraining <- table(class_rf = ptraining, class_real = training$class)
+mtesting <- table(class_rf = ptesting, class_real = testing$class)
+
+## plot
+set.seed(2)
+mycols <- brewer.pal(n = 5, name = 'Dark2')
+mycols <- sample(mycols)
+res_training <- rft(mtraining[2:1, 2:1], las = 1, line.col = mycols[2])
+res_testing <- rft(mtesting[2:1, 2:1], las = 1,  line.col = mycols[3], add = TRUE)
+legend('bottomright', c('training', 'testing'), col = mycols[2:3], lty = 1, bty = 'n')
+```
+
+El AUC para los datos de *training* y *testing* es
+
+```{r}
+## AUCs resultantes
+c(AUC_training = res_training$auc, 
+  AUC_testing = res_testing$auc)
+```
+
+Otras medidas de desempeño comunes pueden obtenerse haciendo
+
+```{r}
+## performance
+performance <- data.frame(training = measures(mtraining), 
+                          testing = measures(mtesting))
+performance
+```
+
+### Variable importance
+
+A partir del modelo RF ajustado que almacenamos en el objeto `rf_model_grid`, es posible analizar el *variable importance*. La función clave es `vip()` del paquete `vip`:
+
+```{r, message=FALSE, fig.align='center'}
+## disponibilidad del paquete vip
+if(!require(vip)) install.packages('vip')
+require(vip)
+
+## variable importance
+vip(rf_model_grid, num_features = 20) + theme_minimal()
+```
+
+Al parecer, las 5 variables más importantes son `x40`, `x11`, `x17`, `x18` y `x9`.
+
+### Predicción
+
+Si una persona responde
+
+```{r}
+## vector respuesta
+set.seed(1)
+x0 <- sample(0:4, 54, replace = TRUE)
+x0
+```
+
+la `class` predicha es
+
+```{r}
+## predicción para x0
+predict(rf_model_grid, x0)
+```
+
+Por lo tanto, `class = 1` para el vector respuesta `x0`.
+
+## Mejorando el modelo
+
+Una forma de mejorar el modelo es usando *menos* variables predictoras. Para ello, podemos identificar el top 5 de estas utilizando el algoritmo [`OneR`](https://cran.r-project.org/web/packages/OneR/index.html). El artículo original fue publicado por [Holte (1993)](https://link.springer.com/article/10.1023%2FA%3A1022631118932).
+
+```{r, message=FALSE}
+## instalación de OneR
+if(!require("OneR")) install.packages("OneR")
+require("OneR")
+
+## usando OneR
+training[, -ncol(training)] <- apply(training[, -ncol(training)], 2, as.factor)
+data <- optbin(training)
+model <- OneR(class ~ ., data = data, verbose = TRUE)  
+```
+
+En este caso, las variables `x11`, `x17`, `x18` y `x40` parecen ser las *mejores* predictoras de `class`.
+
+Las medidas de desempeño y la regla de decisión del modelo con sólo `x11` pueden obtenerse haciendo
+
+```{r}
+## resultados modelo OneR
+summary(model)
+```
+
+Ahora, entrenemos y validemos un modeo de RF sólo con `x11`.
+
+```{r}
+## modelo RF con x11
+set.seed(123)
+rf_x11 <- train(
+  class ~ x11, 
+  data = training, 
+  method = "rf",
+  trControl = trainControl("repeatedcv", 
+                           number = 10, 
+                           repeats = 3))
+```
+
+Las curvas ROC para *training* y *testing* son:
+
+```{r, fig.align='center', fig.width=5, fig.height=5, message=FALSE}
+## cálculos
+testing[, -ncol(testing)] <- apply(testing[, -ncol(testing)], 2, as.factor)
+ptraining <- predict(rf_x11, training)
+ptesting <- predict(rf_x11, testing)
+
+## confusion
+mtraining <- table(class_rf = ptraining, class_real = training$class)
+mtesting <- table(class_rf = ptesting, class_real = testing$class)
+
+## plot
+res_training <- rft(mtraining[2:1, 2:1], las = 1, line.col = mycols[2])
+mtext('Curvas ROC usando x11', side = 3, line = .5, cex = 1)
+res_testing <- rft(mtesting[2:1, 2:1], las = 1,  line.col = mycols[3], add = TRUE)
+legend('bottomright', c('training', 'testing'), col = mycols[2:3], lty = 1, bty = 'n')
+```
+
+El AUC y otras medidas de desempeño pueden obtenerse haciendo
+
+```{r}
+## AUC
+performance <- data.frame(
+  training = c(measures(mtraining), auc = res_training$auc),
+  testing = c(measures(mtesting), auc = res_testing$auc)
+  )
+performance
+```
+
+En el artículo [original](https://www.acarindex.com/pdfler/acarindex-2bc7d706-22bd.pdf), el *Accuracy* alcanzado fue de 98.82% con 6 variables. Nosotros sólo con `x11`, podemos lograr 98.5% en *training* y 93.8% en *testing*.
+
+[**Nada mal!**]{style="color:blue;"}
+
+```{r cat, echo=FALSE, out.width="65%", fig.align='center', message=FALSE}
+knitr::include_graphics("https://i0.wp.com/justmaths.co.uk/wp-content/uploads/2016/10/celebration-gif.gif?ssl=1")
+```
+
+## Homework
+
+Use [estos](https://www.dropbox.com/s/kg7in19bzrh16o0/chikvclass.txt?dl=0) datos de [Chikungunya](https://www.uninorte.edu.co/web/grupo-prensa/w/identifican-siete-subgrupos-de-pacientes-con-chikunguna-en-barranquilla) para proponer y desarrollar un modelo predictivo con el *menor* número de predictoras posible basado en RF, para determinar la clase a la que pertenece un individuo con un perfil de síntomas específico.
+
+```{r echo=FALSE, out.width="85%", fig.cap="Vector transmisor de Chikungunya.", fig.align='center', message=FALSE}
+require(knitr)
+knitr::include_graphics("https://www.uninorte.edu.co/documents/13400067/23243175/Dengue-Mosquito.jpg/3c543c53-ddf5-fee0-89f7-9a642fe183ac?t=1650906628734")
+```
+
+Los datos corresponden a [esta](https://journals.plos.org/plosntds/article?id=10.1371/journal.pntd.0008281) publicación. La variable respuesta es `class` y las variables predictoras $x_1,x_2,\ldots,x_{26}$ corresponden a la presencia ($x_j=1$) o ausencia ($x_j = 0$) del síntoma $j$ ($j=1,2,\ldots,26$). Los síntomas corresponden a la primera columna de [esta](https://journals.plos.org/plosntds/article/figure/image?size=large&id=10.1371/journal.pntd.0008281.t002) tabla. Así por ejemplo, $x_1$ corresponde a la presencia de fiebre, $x_2$ a mareo, $\ldots$, $x_{26}$ dolor en la cadera.
+
+**Fecha de entrega:** Enviar el HTML a [jvelezv\@uninorte.edu.co](mailto:jvelezv@uninorte.edu.co){.email} antes Abril 24, 2024.
+
+### Descripción de los datos:
+
+```{r}
+## lectura de datos
+d <- read.csv("https://www.dropbox.com/s/kg7in19bzrh16o0/chikvclass.txt?dl=1", 
+                header = TRUE, sep = '')
+## primeras 3 filas
+head(d, 3)
+```
+
+```{r}
+hist(d$class)
+```
+
+```{r}
+
+d_subset <- d[, !names(d) %in% "id"]
+d_subset$class <- factor(d_subset$class)
+
+## crear particion
+set.seed(1)
+intrain <- createDataPartition(y = d_subset$class, p = 0.8, list = FALSE)
+training <- d_subset[intrain,]
+testing <- d_subset[-intrain,]
+
+table(training$class)
+```
+
+```{r}
+training
+
+```
+
+### Modelo base (todas las variables)
+
+```{r, message=FALSE}
+## ajuste del modelo RF
+set.seed(123)
+rf_model <- train(
+  class ~ . , 
+  data = training, 
+  method = "rf",
+  trControl = trainControl("repeatedcv", 
+                           number = 10, repeats = 3),
+  tuneLength = 10)
+
+## resultados
+rf_model
+```
+
+```{r}
+plot(rf_model)
+```
+
+```{r}
+## confusion matrix for training
+black_box_rf <- rf_model$finalModel
+ptraining <- predict(black_box_rf, training)
+confusionMatrix(ptraining, training$class)
+```
+
+```{r}
+## confusion matrix for testing
+ptesting <- predict(black_box_rf, testing)
+confusionMatrix(ptesting, testing$class)
+```
+
+### Curvas ROC y AUC
+
+Ahora, con el objeto `rf_model_grid` podemos construir las curvas ROC para *training* y *testing*:
+
+```{r, fig.align='center', fig.width=5, fig.height=5, message=FALSE}
+## cálculos
+ptraining <- predict(black_box_rf, training)
+ptesting <- predict(black_box_rf, testing)
+
+## confusion
+mtraining <- table(class_rf = ptraining, class_real = training$class)
+mtesting <- table(class_rf = ptesting, class_real = testing$class)
+
+## plot
+set.seed(2)
+mycols <- brewer.pal(n = 5, name = 'Dark2')
+mycols <- sample(mycols)
+res_training <- rft(mtraining[2:1, 2:1], las = 1, line.col = mycols[2])
+res_testing <- rft(mtesting[2:1, 2:1], las = 1,  line.col = mycols[3], add = TRUE)
+legend('bottomright', c('training', 'testing'), col = mycols[2:3], lty = 1, bty = 'n')
+```
+
+
+El AUC para los datos de *training* y *testing* es
+
+```{r}
+## AUCs resultantes
+c(AUC_training = res_training$auc, 
+  AUC_testing = res_testing$auc)
+```
+
+Otras medidas de desempeño comunes pueden obtenerse haciendo
+
+```{r}
+## performance
+performance <- data.frame(training = measures(mtraining), 
+                          testing = measures(mtesting))
+performance
+```
+
+
+### Selección de varaibles más imporantes
+
+A partir del modelo RF ajustado que almacenamos en el objeto `black_box_rf`, es posible analizar el *variable importance*. La función clave es `vip()` del paquete `vip`:
+
+```{r, message=FALSE, fig.align='center'}
+## disponibilidad del paquete vip
+if(!require(vip)) install.packages('vip')
+require(vip)
+
+## variable importance
+vip(black_box_rf, num_features = 20) + theme_minimal()
+```
+
+Al parecer, las 5 variables más importantes son `x25`, `x26`, `x24`, `x14` y `x21` con valores superiores a 40
+
+#### Mejorando el modelo
+
+Una forma de mejorar el modelo es usando *menos* variables predictoras. Para ello, podemos identificar el top 5 de estas utilizando el algoritmo [`OneR`](https://cran.r-project.org/web/packages/OneR/index.html). El artículo original fue publicado por [Holte (1993)](https://link.springer.com/article/10.1023%2FA%3A1022631118932).
+
+```{r, message=FALSE}
+## instalación de OneR
+if(!require("OneR")) install.packages("OneR")
+require("OneR")
+
+## usando OneR
+training[, -ncol(training)] <- apply(training[, -ncol(training)], 2, as.factor)
+data <- optbin(training)
+model <- OneR(class ~ ., data = data, verbose = TRUE)  
+```
+En este caso, las variables `x25`, `x24`, `x23`, `x21`y `x7` parecen ser las *mejores* predictoras de `class`.
+
+Las medidas de desempeño y la regla de decisión del modelo con sólo `x25` pueden obtenerse haciendo
+
+```{r}
+## resultados modelo OneR
+summary(model)
+```
+
+Ahora, entrenemos y validemos un modeo de RF sólo con `x25`.
+
+```{r}
+## modelo RF con x25
+set.seed(123)
+rf_x25 <- train(
+  class ~ x25, 
+  data = training, 
+  method = "rf",
+  trControl = trainControl("repeatedcv", 
+                           number = 10, 
+                           repeats = 3))
+```
+
+Las curvas ROC para *training* y *testing* son:
+
+```{r, fig.align='center', fig.width=5, fig.height=5, message=FALSE}
+## cálculos
+testing[, -ncol(testing)] <- apply(testing[, -ncol(testing)], 2, as.factor)
+ptraining <- predict(rf_x25, training)
+ptesting <- predict(rf_x25, testing)
+
+## confusion
+mtraining <- table(class_rf = ptraining, class_real = training$class)
+mtesting <- table(class_rf = ptesting, class_real = testing$class)
+
+## plot
+res_training <- rft(mtraining[2:1, 2:1], las = 1, line.col = mycols[2])
+mtext('Curvas ROC usando x25', side = 3, line = .5, cex = 1)
+res_testing <- rft(mtesting[2:1, 2:1], las = 1,  line.col = mycols[3], add = TRUE)
+legend('bottomright', c('training', 'testing'), col = mycols[2:3], lty = 1, bty = 'n')
+```
+
+El AUC y otras medidas de desempeño pueden obtenerse haciendo
+
+```{r}
+## AUC
+performance <- data.frame(
+  training = c(measures(mtraining), auc = res_training$auc),
+  testing = c(measures(mtesting), auc = res_testing$auc)
+  )
+performance
+```
+
+#### Mejora modelo Top 5 Variables
+
+Usando `x25`, `x24`, `x23`, `x21`y `x7`
+
+```{r}
+## modelo RF con `x25`, `x24`, `x23`, `x21`y `x7`
+##testing <- testing[, c("class","x25", "x24", "x23", "x21", "x7")]
+##training <- training[, c("class","x25", "x24", "x23", "x21", "x7")]
+
+set.seed(123)
+rf_top5 <- train(
+  #class ~ ., 
+  class ~ x25 + x24 + x23 + x21 + x7, 
+  data = training, 
+  method = "rf",
+  trControl = trainControl("repeatedcv", 
+                           number = 10, 
+                           repeats = 3))
+```
+
+Las curvas ROC para *training* y *testing* son:
+
+```{r, fig.align='center', fig.width=5, fig.height=5, message=FALSE}
+## cálculos
+testing[, -ncol(testing)] <- apply(testing[, -ncol(testing)], 2, as.factor)
+ptraining <- predict(rf_top5, training)
+ptesting <- predict(rf_top5, testing)
+
+## confusion
+mtraining <- table(class_rf = ptraining, class_real = training$class)
+mtesting <- table(class_rf = ptesting, class_real = testing$class)
+
+## plot
+res_training <- rft(mtraining[2:1, 2:1], las = 1, line.col = mycols[2])
+mtext('Curvas ROC usando x25', side = 3, line = .5, cex = 1)
+res_testing <- rft(mtesting[2:1, 2:1], las = 1,  line.col = mycols[3], add = TRUE)
+legend('bottomright', c('training', 'testing'), col = mycols[2:3], lty = 1, bty = 'n')
+```
+
+
+El AUC y otras medidas de desempeño pueden obtenerse haciendo
+
+```{r}
+## AUC
+performance <- data.frame(
+  training = c(measures(mtraining), auc = res_training$auc),
+  testing = c(measures(mtesting), auc = res_testing$auc)
+  )
+performance
+```
+
+- Para el modelo que tiene en cuenta todas las variables el _Accuracy_ alcanzado fue de 46.3%en training y 46.2% en testing. Se obtuvo un lift de 4.1 en training y 4.01 en testing
+- Solo con `x25`, podemos lograr 41.7% en _training_ y 43.6% en _testing_. e obtuvo un lift de 3.4 en training y 3.63 en testing
+- Solo con `x25`, `x24`, `x23`, `x21`y `x7`, podemos lograr 40.0% en _training_ y 41.04% en _testing_. e obtuvo un lift de 4.2 en training y 4.16 en testing
+
+Por simplicidad del modelo y teniendo en cuenta que se obtiene el lift mayor, se recomienda usar el modelo que usa solo 5 variables
+
+
+
