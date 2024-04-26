@@ -4495,11 +4495,12 @@ Balanced Accuracy     0.81910</code></pre>
 </section>
 <section id="conclusiones" class="level3">
 <h3 class="anchored" data-anchor-id="conclusiones">Conclusiones</h3>
-<p>A partir de los modelso construidos, podemos concluir:</p>
-<p>los datos logran ajustarse al fenómeno modelado, por lo que es posible constuir modelo que permitan predecir la clase de chikunguña que los paciente pueden tener a partir de los síntomas.</p>
-<p>Inicialmente se construye un modelo con todas la varaibles,</p>
-<p>luego se intentó co una variable</p>
-<p>posteriormente se intentó añadir 5, 7 , 10 varaibles, sin embargo, sólo al aumentar varaibles, el modelo es capaz de identificar los chikunguñas más críticos y no antes</p>
+<p>A partir de los modelos construidos, podemos concluir lo siguiente:</p>
+<p>Los datos logran ajustarse al fenómeno modelado, lo que indica que es posible construir modelos que permitan predecir la clase de chikungunya que los pacientes pueden tener a partir de los síntomas.</p>
+<p>Inicialmente se construyó un modelo con todas las variables. Para los datos de testing, se obtuvo una sensibilidad entre 0.57 y 1.0, y una especificidad entre 0.94 y 0.99, además de una precisión balanceada mínima de 0.89.</p>
+<p>Luego se intentó construir el modelo con solo la variable más importante, sin embargo, con este esquema, el modelo solo fue capaz de identificar las clases más representadas (1 y 2), pero no pudo identificar casos para las otras clases.</p>
+<p>Por lo anterior, se intentó añadir 5, 7, 10 y hasta 15 variables. Solo al aumentar las variables, el modelo fue capaz de identificar los casos más críticos de chikungunya (clases altas) y no antes. Para el modelo con las 15 variables más importantes, se obtuvo una sensibilidad mínima de 0.52 y una especificidad mínima de 0.92, además de una precisión balanceada mínima de 0.75.</p>
+<p>En comparación con el modelo que utiliza todas las variables, el modelo con solo 15 variables se acerca a los resultados obtenidos con el modelo más completo. En este caso, si el costo de incluir más variables no aumenta considerablemente, es conveniente agregar más variables, especialmente debido a la cantidad de clases de chikungunya. Sin embargo, también es cierto que el modelo con 15 variables se aproxima considerablemente a los resultados obtenidos con el modelo que incluye todas las variables.</p>
 </section>
 </section>
 
